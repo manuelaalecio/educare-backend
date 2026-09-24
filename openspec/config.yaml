@@ -1,0 +1,104 @@
+schema: spec-driven
+
+context: |
+  ## Produto
+  Educare é um sistema interno de uma ONG/instituição que atende crianças em situação
+  de vulnerabilidade. Este backend guarda os dados e expõe a API usada pelo frontend.
+
+  Objetivo: ajudar os funcionários da instituição a gerenciar o cadastro das crianças
+  atendidas e seus responsáveis, e facilitar o período de rematrícula.
+
+  Usuários: apenas funcionários da instituição. Crianças e responsáveis não acessam
+  o sistema; são os dados gerenciados por ele.
+
+  Escopo inicial:
+  - Cadastro (CRUD) de crianças.
+  - Cadastro (CRUD) de responsáveis e o vínculo entre crianças e responsáveis.
+  - Cadastro (CRUD) de usuários (funcionários) e autenticação.
+  - Rematrícula: existe uma janela de tempo (período de rematrícula) em que o cadastro
+    de cada criança é revisado e renovado. O sistema deve tornar esse recadastro rápido,
+    partindo dos dados já existentes em vez de cadastrar tudo de novo.
+
+  Glossário (termo do negócio -> nome no código):
+  - Criança -> Child
+  - Responsável -> Guardian
+  - Usuário / funcionário -> User
+  - Matrícula -> Enrollment
+  - Rematrícula -> Reenrollment
+  - Período de rematrícula -> ReenrollmentPeriod
+
+  Dados sensíveis (LGPD): o sistema trata dados pessoais de crianças e adolescentes,
+  que exigem cuidado especial (LGPD, art. 14). Coletar só os dados necessários,
+  restringir o acesso a usuários autenticados, nunca registrar dados pessoais em logs
+  e manter trilha de quem criou ou alterou cada registro.
+
+  ## Topologia
+  - Dois serviços implantados separadamente: este backend (API REST) e um frontend
+    (repositório próprio). Este repositório cobre apenas o backend.
+  - O backend é stateless e se comunica com o frontend exclusivamente via HTTP/JSON.
+  - Hospedagem: Oracle Cloud Free Tier, com CPU e memória limitadas. Evitar componentes
+    de infraestrutura extras (Redis, Kafka, etc.) sem justificativa explícita no design.
+
+  ## Stack
+  - Java 21, Spring Boot 4.1.1, Gradle.
+  - PostgreSQL 16, Spring Data JPA, Flyway. Lombok disponível.
+  - Pacote raiz: com.manuelaalecio.educare_backend (com underscore).
+
+  ## Arquitetura interna
+  Estrutura detalhada, responsabilidades de cada camada, nomenclatura e exemplos
+  estão no CLAUDE.md (seção "Arquitetura e estrutura do código"), que é a referência.
+  Resumo das regras que o design deve respeitar:
+  - Package-by-feature: cada pacote de primeiro nível é um módulo de negócio e
+    corresponde a uma capability do OpenSpec. Camadas: api, application, domain,
+    infrastructure. Código transversal fica em shared.
+  - Dependências: api -> application -> domain; infrastructure -> domain.
+  - Um módulo não acessa api/domain/infrastructure de outro; comunicação entre módulos
+    só via services de application ou eventos de aplicação do Spring.
+  - Controllers nunca expõem entidades; sempre DTOs.
+  - Regras verificadas por testes ArchUnit.
+
+  ## API
+  - REST/JSON, prefixo versionado /api/v1.
+  - Erros no formato RFC 9457 (ProblemDetail) via @RestControllerAdvice em shared.
+  - Validação de entrada com Bean Validation nos DTOs.
+  - Paginação padrão do Spring Data (page, size, sort) em listagens.
+  - Documentação OpenAPI gerada pelo springdoc.
+  - CORS liberado apenas para a(s) origem(ns) do frontend, configuradas por variável de ambiente.
+
+  ## Persistência
+  - Schema gerenciado só pelo Flyway (src/main/resources/db/migration, V<n>__descricao.sql).
+    spring.jpa.hibernate.ddl-auto=validate. Migrations aplicadas nunca são editadas.
+  - Identificadores: UUID.
+  - Colunas de auditoria (created_at, updated_at) nas tabelas de negócio.
+
+  ## Segurança
+  - Spring Security, API stateless autenticada por JWT (Bearer).
+  - TODO: definir emissor do token (autenticação própria vs. provedor externo).
+
+  ## Configuração
+  - application.yaml com profiles dev e prod; segredos e URLs só por variáveis de ambiente.
+  - Actuator: health (com liveness/readiness) exposto para o healthcheck da VM/Compose.
+
+  ## Testes
+  Estratégia completa (tipos de teste, cobertura, convenções e estrutura) no CLAUDE.md,
+  seção "Testes", que é a referência. Resumo do que afeta o planejamento:
+  - Testes são obrigatórios; uma change só está concluída com ./gradlew build verde.
+  - Tipos: unitário, web (@WebMvcTest), persistência (@DataJpaTest), cenário
+    (@SpringBootTest + Testcontainers, um teste por Scenario das specs) e ArchUnit.
+  - Cobertura JaCoCo mínima de 90% de linhas e branches, verificada no build.
+
+rules:
+  proposal:
+    - Incluir uma seção "Non-goals".
+    - Indicar qual módulo (capability) é afetado; mudanças que atravessam módulos devem justificar.
+  design:
+    - Descrever endpoints (método, rota, status codes) e alterações de schema (migration Flyway).
+    - Justificar qualquer nova dependência ou componente de infraestrutura, considerando os limites do Oracle Free Tier.
+  specs:
+    - Todo requirement tem ao menos um Scenario de sucesso e um de erro/borda.
+    - Scenarios devem ser concretos e verificáveis (entradas, status HTTP e resultado esperados).
+  tasks:
+    - Toda task de código inclui seus testes (unitário e, quando houver endpoint, @WebMvcTest) na mesma task, não numa task separada no final.
+    - Incluir uma task de testes de cenário cobrindo cada Scenario das specs da change.
+    - A última task é rodar ./gradlew build com a verificação de cobertura do JaCoCo passando.
+    - Mudanças de schema sempre como nova migration Flyway, nunca editando uma existente.
