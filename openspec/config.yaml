@@ -69,14 +69,16 @@ context: |
   - Schema gerenciado só pelo Flyway (src/main/resources/db/migration, V<n>__descricao.sql).
     spring.jpa.hibernate.ddl-auto=validate. Migrations aplicadas nunca são editadas.
   - Identificadores: UUID.
-  - Colunas de auditoria (created_at, updated_at) nas tabelas de negócio.
+  - Colunas de auditoria (created_at, updated_at) nas tabelas de negócio; entidades estendem
+    shared/persistence/BaseEntity.
 
   ## Segurança
   - Spring Security, API stateless autenticada por JWT (Bearer).
   - TODO: definir emissor do token (autenticação própria vs. provedor externo).
 
   ## Configuração
-  - application.yaml com profiles dev e prod; segredos e URLs só por variáveis de ambiente.
+  - application.yaml com profiles dev (padrão, aponta para o banco local do Compose) e prod;
+    segredos só por variáveis de ambiente, e no prod também as URLs.
   - Actuator: health (com liveness/readiness) exposto para o healthcheck da VM/Compose.
 
   ## Testes

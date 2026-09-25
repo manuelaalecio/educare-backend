@@ -23,6 +23,7 @@ services:
       db:
         condition: service_healthy
     environment:
+      SPRING_PROFILES_ACTIVE: prod
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/app
       SPRING_DATASOURCE_USERNAME: app
       SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
