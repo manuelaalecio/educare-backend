@@ -1,0 +1,13 @@
+-- Baseline: marca o início do histórico de versões do schema, sem criar objetos.
+--
+-- Convenção de schema para as próximas migrations (cada módulo cria as suas):
+--
+--   CREATE TABLE <tabela_no_plural> (
+--       id          uuid        PRIMARY KEY,
+--       -- colunas do módulo, em snake_case
+--       created_at  timestamptz NOT NULL,
+--       updated_at  timestamptz NOT NULL
+--   );
+--
+-- Nome de arquivo: V<n>__<descricao_em_snake_case>.sql, com <n> inteiro sequencial.
+-- Migration aplicada nunca é editada: qualquer mudança vira uma nova migration.
