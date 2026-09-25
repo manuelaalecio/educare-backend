@@ -78,14 +78,15 @@ Suba só o banco:
 docker compose up -d db
 ```
 
-Depois rode a API informando a conexão com o banco (use a mesma senha do `.env`):
+Depois rode a API informando a senha do banco (a mesma do `.env`):
 
 ```bash
-SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/app \
-SPRING_DATASOURCE_USERNAME=app \
-SPRING_DATASOURCE_PASSWORD=escolha_uma_senha \
-./gradlew bootRun
+SPRING_DATASOURCE_PASSWORD=escolha_uma_senha ./gradlew bootRun
 ```
+
+Sem profile ativo, a API sobe com o profile `dev`, que já aponta para o banco do Compose (`localhost:5432`, banco e usuário `app`). Na Opção A, o Compose ativa o profile `prod`, em que URL, usuário e senha do banco vêm só de variáveis de ambiente.
+
+Na inicialização, o Flyway aplica as migrations pendentes de `src/main/resources/db/migration/`.
 
 ### 5. Verificar se está no ar
 
