@@ -24,16 +24,30 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
 	static final String ERRORS_PROPERTY = "errors";
 
+	static final String INVALID_FIELDS_DETAIL = "Um ou mais campos são inválidos";
+
 	@Override
 	protected ResponseEntity<Object> handleMethodArgumentNotValid(MethodArgumentNotValidException ex,
 			HttpHeaders headers, HttpStatusCode status, WebRequest request) {
 		ProblemDetail problem = ex.getBody();
-		problem.setDetail("Um ou mais campos são inválidos");
+		problem.setDetail(INVALID_FIELDS_DETAIL);
 		List<Map<String, String>> errors = ex.getBindingResult().getFieldErrors().stream()
-				.map(error -> Map.of("field", error.getField(), "message", String.valueOf(error.getDefaultMessage())))
+				.map(error -> fieldError(error.getField(), String.valueOf(error.getDefaultMessage())))
 				.toList();
 		problem.setProperty(ERRORS_PROPERTY, errors);
 		return handleExceptionInternal(ex, problem, headers, status, request);
+	}
+
+	@ExceptionHandler(InvalidFieldException.class)
+	ProblemDetail handleInvalidField(InvalidFieldException ex) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, INVALID_FIELDS_DETAIL);
+		problem.setProperty(ERRORS_PROPERTY, List.of(fieldError(ex.getField(), ex.getMessage())));
+		return problem;
+	}
+
+	@ExceptionHandler(UnauthorizedException.class)
+	ProblemDetail handleUnauthorized(UnauthorizedException ex) {
+		return ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, ex.getMessage());
 	}
 
 	@ExceptionHandler(NotFoundException.class)
@@ -54,6 +68,10 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 	@ExceptionHandler(PropertyReferenceException.class)
 	ProblemDetail handlePropertyReference(PropertyReferenceException ex) {
 		return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Propriedade inexistente na requisição");
+	}
+
+	private static Map<String, String> fieldError(String field, String message) {
+		return Map.of("field", field, "message", message);
 	}
 
 }

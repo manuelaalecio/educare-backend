@@ -20,3 +20,7 @@ spring:
       hibernate:
         jdbc:
           time_zone: UTC
+educare:
+  security:
+    jwt:
+      expiration: 8h

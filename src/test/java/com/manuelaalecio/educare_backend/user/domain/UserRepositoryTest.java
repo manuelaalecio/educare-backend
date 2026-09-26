@@ -3,7 +3,15 @@ package com.manuelaalecio.educare_backend.user.domain;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.BrokenBarrierException;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import com.manuelaalecio.educare_backend.shared.config.ClockConfiguration;
 import com.manuelaalecio.educare_backend.shared.persistence.JpaAuditingConfiguration;
@@ -16,11 +24,15 @@ import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Every test database already contains the admin seeded by V3 ({@code admin@educare.org}). These tests use other
  * logins and never count users, and each one rolls back its own changes, so they do not depend on the seed
- * (except the seed test itself).
+ * (except the seed test itself). The concurrency test commits its transactions, so it cleans up what it changes.
  */
 @DataJpaTest
 // the JPA slice does not scan @Configuration classes, so auditing (created_at/updated_at) is imported explicitly
@@ -39,6 +51,9 @@ class UserRepositoryTest {
 
 	@Autowired
 	private EntityManager entityManager;
+
+	@Autowired
+	private PlatformTransactionManager transactionManager;
 
 	@Test
 	void shouldFindLoginWhenUserWithLoginExists() {
@@ -185,6 +200,102 @@ class UserRepositoryTest {
 		assertThat(passwordHash).startsWith("$2a$10$");
 		assertThat(matches).isTrue();
 		assertThat(passwordEncoder.matches("educare1234", passwordHash)).isFalse();
+	}
+
+	@Test
+	void shouldFindUserByNormalizedLoginWhenLoginExists() {
+		// given
+		User ana = userRepository.saveAndFlush(new User("Ana Souza", "Ana@Educare.org", "hash"));
+
+		// when
+		var found = userRepository.findByLogin("ana@educare.org");
+
+		// then
+		assertThat(found).map(User::getId).contains(ana.getId());
+	}
+
+	@Test
+	void shouldFindNoUserByLoginWhenNoUserHasLogin() {
+		// given
+		userRepository.saveAndFlush(new User("Ana Souza", "ana@educare.org", "hash"));
+
+		// when
+		var found = userRepository.findByLogin("bruno@educare.org");
+
+		// then
+		assertThat(found).isEmpty();
+	}
+
+	@Test
+	void shouldReturnOnlyUsersWithRoleWhenFindingAllByRoleForUpdate() {
+		// given: rolled back at the end of the test, like the users created here
+		jdbcTemplate.update("DELETE FROM users");
+		User ana = userRepository.saveAndFlush(new User("Ana Souza", "ana@educare.org", "hash", Role.ADMIN));
+		User bruno = userRepository.saveAndFlush(new User("Bruno Lima", "bruno@educare.org", "hash", Role.ADMIN));
+		userRepository.saveAndFlush(new User("Carla Dias", "carla@educare.org", "hash", Role.USER));
+
+		// when
+		List<User> admins = userRepository.findAllByRoleForUpdate(Role.ADMIN);
+
+		// then
+		assertThat(admins).extracting(User::getId).containsExactlyInAnyOrder(ana.getId(), bruno.getId());
+	}
+
+	@Test
+	@Transactional(propagation = Propagation.NOT_SUPPORTED)
+	void shouldAcceptExactlyOneWhenTwoTransactionsDemoteDifferentAdminsConcurrently() throws Exception {
+		// given: only two ADMINs; the ADMINs already stored (the seed) are demoted until the end of the test
+		List<UUID> storedAdmins = jdbcTemplate.queryForList("SELECT id FROM users WHERE role = 'ADMIN'", UUID.class);
+		jdbcTemplate.update("UPDATE users SET role = 'USER' WHERE role = 'ADMIN'");
+		ExecutorService executor = Executors.newFixedThreadPool(2);
+		try {
+			User ana = userRepository.saveAndFlush(new User("Ana Souza", "ana@educare.org", "hash", Role.ADMIN));
+			User bruno = userRepository.saveAndFlush(new User("Bruno Lima", "bruno@educare.org", "hash", Role.ADMIN));
+			CyclicBarrier bothStarted = new CyclicBarrier(2);
+
+			// when
+			Future<Boolean> demoteAna = executor.submit(() -> demoteUnlessLastAdmin(ana.getId(), bothStarted));
+			Future<Boolean> demoteBruno = executor.submit(() -> demoteUnlessLastAdmin(bruno.getId(), bothStarted));
+
+			// then
+			assertThat(List.of(demoteAna.get(30, TimeUnit.SECONDS), demoteBruno.get(30, TimeUnit.SECONDS)))
+				.containsExactlyInAnyOrder(true, false);
+			assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM users WHERE role = 'ADMIN'", Integer.class))
+				.isEqualTo(1);
+		}
+		finally {
+			executor.shutdownNow();
+			jdbcTemplate.update("DELETE FROM users WHERE login IN ('ana@educare.org', 'bruno@educare.org')");
+			storedAdmins.forEach(id -> jdbcTemplate.update("UPDATE users SET role = 'ADMIN' WHERE id = ?", id));
+		}
+	}
+
+	/**
+	 * Does in its own transaction what {@code UserService} does before demoting an ADMIN. Both transactions are
+	 * open, with their target already read, before either of them locks the ADMINs.
+	 *
+	 * @return whether the demotion was accepted
+	 */
+	private boolean demoteUnlessLastAdmin(UUID id, CyclicBarrier bothStarted) {
+		return new TransactionTemplate(transactionManager).execute(status -> {
+			User user = userRepository.findById(id).orElseThrow();
+			await(bothStarted);
+			if (userRepository.findAllByRoleForUpdate(Role.ADMIN).size() < 2) {
+				return false;
+			}
+			user.changeRole(Role.USER);
+			userRepository.flush();
+			return true;
+		});
+	}
+
+	private static void await(CyclicBarrier barrier) {
+		try {
+			barrier.await(30, TimeUnit.SECONDS);
+		}
+		catch (InterruptedException | BrokenBarrierException | TimeoutException ex) {
+			throw new IllegalStateException(ex);
+		}
 	}
 
 	private String storedRole(UUID id) {

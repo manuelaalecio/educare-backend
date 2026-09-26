@@ -45,6 +45,8 @@ class AdminSeedScenarioTest {
 
 	private static final String ADMIN_PASSWORD_VARIABLE = "EDUCARE_ADMIN_PASSWORD";
 	private static final String ADMIN_LOGIN = "admin@educare.org";
+	private static final String JWT_SECRET_VARIABLE = "EDUCARE_JWT_SECRET";
+	private static final String CORS_ALLOWED_ORIGINS_VARIABLE = "EDUCARE_CORS_ALLOWED_ORIGINS";
 
 	@Container
 	static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer(DockerImageName.parse("postgres:16"));
@@ -145,7 +147,10 @@ class AdminSeedScenarioTest {
 				"--spring.datasource.url=" + databaseUrl,
 				"--spring.datasource.username=" + POSTGRES.getUsername(),
 				"--spring.datasource.password=" + POSTGRES.getPassword(),
-				"--spring.devtools.restart.enabled=false"), Stream.of(extraArguments))
+				"--spring.devtools.restart.enabled=false",
+				// valid security settings, so the prod scenarios fail only for the admin password
+				"--" + JWT_SECRET_VARIABLE + "=" + "a".repeat(32),
+				"--" + CORS_ALLOWED_ORIGINS_VARIABLE + "=https://educare.example.org"), Stream.of(extraArguments))
 			.toArray(String[]::new);
 		return new SpringApplicationBuilder(EducareBackendApplication.class)
 			.web(WebApplicationType.NONE)
@@ -156,13 +161,15 @@ class AdminSeedScenarioTest {
 	}
 
 	/**
-	 * The JVM environment cannot be changed, so the application gets a copy of it without the admin password. This
-	 * keeps the scenarios deterministic even when the variable is set where the tests run.
+	 * The JVM environment cannot be changed, so the application gets a copy of it without the admin password and the
+	 * security variables. This keeps the scenarios deterministic even when the variables are set where the tests run.
 	 */
 	private static StandardEnvironment environmentWithoutAdminPassword() {
 		StandardEnvironment environment = new StandardEnvironment();
 		Map<String, Object> variables = new HashMap<>(environment.getSystemEnvironment());
 		variables.remove(ADMIN_PASSWORD_VARIABLE);
+		variables.remove(JWT_SECRET_VARIABLE);
+		variables.remove(CORS_ALLOWED_ORIGINS_VARIABLE);
 		environment.getPropertySources()
 			.replace(SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME,
 					new SystemEnvironmentPropertySource(SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME, variables));

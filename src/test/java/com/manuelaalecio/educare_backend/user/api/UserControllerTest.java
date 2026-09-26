@@ -26,15 +26,31 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Supplier;
+import java.util.stream.Stream;
 
+import com.manuelaalecio.educare_backend.shared.config.ClockConfiguration;
 import com.manuelaalecio.educare_backend.shared.error.GlobalExceptionHandler;
+import com.manuelaalecio.educare_backend.shared.security.AuthenticatedUser;
+import com.manuelaalecio.educare_backend.shared.security.AuthenticatedUserLookup;
+import com.manuelaalecio.educare_backend.shared.security.JwtConfiguration;
+import com.manuelaalecio.educare_backend.shared.security.ProblemDetailSecurityHandlers;
+import com.manuelaalecio.educare_backend.shared.security.SecurityConfiguration;
+import com.manuelaalecio.educare_backend.shared.testsupport.AccessTokens;
 import com.manuelaalecio.educare_backend.user.application.UserService;
+import com.manuelaalecio.educare_backend.user.domain.LastAdminException;
 import com.manuelaalecio.educare_backend.user.domain.LoginAlreadyInUseException;
 import com.manuelaalecio.educare_backend.user.domain.Role;
+import com.manuelaalecio.educare_backend.user.domain.SelfDeletionException;
 import com.manuelaalecio.educare_backend.user.domain.User;
 import com.manuelaalecio.educare_backend.user.domain.UserNotFoundException;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -43,6 +59,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -51,10 +68,13 @@ import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 @WebMvcTest(UserController.class)
-@Import({GlobalExceptionHandler.class, UserMapper.class})
+@Import({UserMapper.class, SecurityConfiguration.class, JwtConfiguration.class, ClockConfiguration.class,
+		ProblemDetailSecurityHandlers.class, GlobalExceptionHandler.class, AccessTokens.class})
 class UserControllerTest {
 
 	private static final UUID ID = UUID.fromString("0190f4a2-0000-7000-8000-000000000001");
+	private static final UUID ADMIN_ID = UUID.fromString("0190f4a2-0000-7000-8000-000000000010");
+	private static final UUID USER_ID = UUID.fromString("0190f4a2-0000-7000-8000-000000000020");
 	private static final Instant CREATED_AT = Instant.parse("2026-03-01T10:00:00Z");
 	private static final Instant UPDATED_AT = Instant.parse("2026-03-02T09:00:00Z");
 	private static final String PASSWORD_HASH = "$2a$10$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ01234";
@@ -64,12 +84,76 @@ class UserControllerTest {
 			{"name": "Ana Souza", "login": "ana.souza@educare.org", "password": "segredo123"}""";
 	private static final String VALID_UPDATE_BODY = """
 			{"name": "Ana Souza", "login": "ana.souza@educare.org", "role": "ADMIN"}""";
+	private static final String VALID_PASSWORD_BODY = """
+			{"password": "novaSenha456"}""";
 
 	@Autowired
 	private MockMvc mockMvc;
 
+	@Autowired
+	private AccessTokens accessTokens;
+
 	@MockitoBean
 	private UserService userService;
+
+	@MockitoBean
+	private AuthenticatedUserLookup lookup;
+
+	@BeforeEach
+	void setUpAuthenticatedUsers() {
+		given(lookup.findById(ADMIN_ID)).willReturn(Optional.of(new AuthenticatedUser(ADMIN_ID, "ADMIN")));
+		given(lookup.findById(USER_ID)).willReturn(Optional.of(new AuthenticatedUser(USER_ID, "USER")));
+	}
+
+	// ---------- authentication and authorization (every endpoint) ----------
+
+	static Stream<Arguments> endpoints() {
+		return Stream.of(
+				Arguments.of("create", (Supplier<MockHttpServletRequestBuilder>) () ->
+						postJson("/api/v1/users", VALID_CREATE_BODY)),
+				Arguments.of("list", (Supplier<MockHttpServletRequestBuilder>) () -> get("/api/v1/users")),
+				Arguments.of("findById", (Supplier<MockHttpServletRequestBuilder>) () ->
+						get("/api/v1/users/{id}", ID)),
+				Arguments.of("update", (Supplier<MockHttpServletRequestBuilder>) () ->
+						putJson("/api/v1/users/" + ID, VALID_UPDATE_BODY)),
+				Arguments.of("changePassword", (Supplier<MockHttpServletRequestBuilder>) () ->
+						putJson("/api/v1/users/" + ID + "/password", VALID_PASSWORD_BODY)),
+				Arguments.of("delete", (Supplier<MockHttpServletRequestBuilder>) () ->
+						delete("/api/v1/users/{id}", ID)));
+	}
+
+	@ParameterizedTest(name = "{0}")
+	@MethodSource("endpoints")
+	void shouldRespondUnauthorizedProblemWhenTokenIsMissing(String endpoint,
+			Supplier<MockHttpServletRequestBuilder> request) throws Exception {
+		// when
+		ResultActions result = mockMvc.perform(request.get());
+
+		// then
+		result.andExpect(status().isUnauthorized())
+				.andExpect(content().contentType(PROBLEM_JSON))
+				.andExpect(header().string(HttpHeaders.WWW_AUTHENTICATE, "Bearer"))
+				.andExpect(jsonPath("$.title").value("Unauthorized"))
+				.andExpect(jsonPath("$.status").value(401));
+		then(userService).shouldHaveNoInteractions();
+	}
+
+	@ParameterizedTest(name = "{0}")
+	@MethodSource("endpoints")
+	void shouldRespondForbiddenProblemWithoutCallingServiceWhenUserIsNotAdmin(String endpoint,
+			Supplier<MockHttpServletRequestBuilder> request) throws Exception {
+		// when
+		ResultActions result = mockMvc.perform(request.get()
+				.header(HttpHeaders.AUTHORIZATION, accessTokens.bearer(USER_ID)));
+
+		// then
+		result.andExpect(status().isForbidden())
+				.andExpect(content().contentType(PROBLEM_JSON))
+				.andExpect(jsonPath("$.title").value("Forbidden"))
+				.andExpect(jsonPath("$.status").value(403))
+				.andExpect(jsonPath("$.detail").value("Acesso negado"));
+		then(userService).shouldHaveNoInteractions();
+	}
 
 	// ---------- POST /api/v1/users ----------
 
@@ -80,7 +164,7 @@ class UserControllerTest {
 				.willReturn(user(Role.USER));
 
 		// when
-		ResultActions result = mockMvc.perform(postJson("/api/v1/users", VALID_CREATE_BODY));
+		ResultActions result = performAsAdmin(postJson("/api/v1/users", VALID_CREATE_BODY));
 
 		// then
 		result.andExpect(status().isCreated())
@@ -104,7 +188,7 @@ class UserControllerTest {
 		given(userService.create(anyString(), anyString(), anyString(), isNull())).willReturn(user(Role.USER));
 
 		// when
-		ResultActions result = mockMvc.perform(postJson("/api/v1/users", VALID_CREATE_BODY));
+		ResultActions result = performAsAdmin(postJson("/api/v1/users", VALID_CREATE_BODY));
 
 		// then
 		result.andExpect(status().isCreated());
@@ -117,7 +201,7 @@ class UserControllerTest {
 		given(userService.create(anyString(), anyString(), anyString(), eq(Role.ADMIN))).willReturn(user(Role.ADMIN));
 
 		// when
-		ResultActions result = mockMvc.perform(postJson("/api/v1/users", """
+		ResultActions result = performAsAdmin(postJson("/api/v1/users", """
 				{"name": "Ana Souza", "login": "ana.souza@educare.org", "password": "segredo123", "role": "ADMIN"}"""));
 
 		// then
@@ -128,7 +212,7 @@ class UserControllerTest {
 	@Test
 	void shouldReturnErrorsForNameLoginAndPasswordWhenCreateBodyIsEmpty() throws Exception {
 		// when
-		ResultActions result = mockMvc.perform(postJson("/api/v1/users", "{}"));
+		ResultActions result = performAsAdmin(postJson("/api/v1/users", "{}"));
 
 		// then
 		result.andExpect(status().isBadRequest())
@@ -142,7 +226,7 @@ class UserControllerTest {
 	@Test
 	void shouldRejectCreateWhenLoginIsNotAnEmail() throws Exception {
 		// when
-		ResultActions result = mockMvc.perform(postJson("/api/v1/users", """
+		ResultActions result = performAsAdmin(postJson("/api/v1/users", """
 				{"name": "Ana Souza", "login": "ana.souza", "password": "segredo123"}"""));
 
 		// then
@@ -153,7 +237,7 @@ class UserControllerTest {
 	@Test
 	void shouldRejectCreateWhenLoginDomainHasNoDot() throws Exception {
 		// when
-		ResultActions result = mockMvc.perform(postJson("/api/v1/users", """
+		ResultActions result = performAsAdmin(postJson("/api/v1/users", """
 				{"name": "Ana Souza", "login": "ana@educare", "password": "segredo123"}"""));
 
 		// then
@@ -167,7 +251,7 @@ class UserControllerTest {
 		String login = "a".repeat(243) + "@educare.org";
 
 		// when
-		ResultActions result = mockMvc.perform(postJson("/api/v1/users", """
+		ResultActions result = performAsAdmin(postJson("/api/v1/users", """
 				{"name": "Ana Souza", "login": "%s", "password": "segredo123"}""".formatted(login)));
 
 		// then
@@ -179,7 +263,7 @@ class UserControllerTest {
 	@Test
 	void shouldRejectCreateWhenNameIsBlank() throws Exception {
 		// when
-		ResultActions result = mockMvc.perform(postJson("/api/v1/users", """
+		ResultActions result = performAsAdmin(postJson("/api/v1/users", """
 				{"name": "   ", "login": "ana.souza@educare.org", "password": "segredo123"}"""));
 
 		// then
@@ -190,7 +274,7 @@ class UserControllerTest {
 	@Test
 	void shouldRejectCreateWhenNameIsLongerThan150Characters() throws Exception {
 		// when
-		ResultActions result = mockMvc.perform(postJson("/api/v1/users", """
+		ResultActions result = performAsAdmin(postJson("/api/v1/users", """
 				{"name": "%s", "login": "ana.souza@educare.org", "password": "segredo123"}""".formatted("a".repeat(151))));
 
 		// then
@@ -201,7 +285,7 @@ class UserControllerTest {
 	@Test
 	void shouldRejectCreateWhenPasswordIsShorterThan8Characters() throws Exception {
 		// when
-		ResultActions result = mockMvc.perform(postJson("/api/v1/users", """
+		ResultActions result = performAsAdmin(postJson("/api/v1/users", """
 				{"name": "Ana Souza", "login": "ana.souza@educare.org", "password": "1234567"}"""));
 
 		// then
@@ -212,7 +296,7 @@ class UserControllerTest {
 	@Test
 	void shouldRejectCreateWhenPasswordIsLongerThan72Characters() throws Exception {
 		// when
-		ResultActions result = mockMvc.perform(postJson("/api/v1/users", """
+		ResultActions result = performAsAdmin(postJson("/api/v1/users", """
 				{"name": "Ana Souza", "login": "ana.souza@educare.org", "password": "%s"}""".formatted("a".repeat(73))));
 
 		// then
@@ -226,7 +310,7 @@ class UserControllerTest {
 		String password = "ç".repeat(40);
 
 		// when
-		ResultActions result = mockMvc.perform(postJson("/api/v1/users", """
+		ResultActions result = performAsAdmin(postJson("/api/v1/users", """
 				{"name": "Ana Souza", "login": "ana.souza@educare.org", "password": "%s"}""".formatted(password)));
 
 		// then
@@ -238,7 +322,7 @@ class UserControllerTest {
 	@Test
 	void shouldRejectCreateWhenRoleIsNotAdminNorUser() throws Exception {
 		// when
-		ResultActions result = mockMvc.perform(postJson("/api/v1/users", """
+		ResultActions result = performAsAdmin(postJson("/api/v1/users", """
 				{"name": "Ana Souza", "login": "ana.souza@educare.org", "password": "segredo123", "role": "SUPER"}"""));
 
 		// then
@@ -249,7 +333,7 @@ class UserControllerTest {
 	@Test
 	void shouldRejectCreateWhenRoleIsNotUpperCase() throws Exception {
 		// when
-		ResultActions result = mockMvc.perform(postJson("/api/v1/users", """
+		ResultActions result = performAsAdmin(postJson("/api/v1/users", """
 				{"name": "Ana Souza", "login": "ana.souza@educare.org", "password": "segredo123", "role": "admin"}"""));
 
 		// then
@@ -263,7 +347,7 @@ class UserControllerTest {
 		given(userService.create(any(), any(), any(), any())).willThrow(new LoginAlreadyInUseException());
 
 		// when
-		ResultActions result = mockMvc.perform(postJson("/api/v1/users", """
+		ResultActions result = performAsAdmin(postJson("/api/v1/users", """
 				{"name": "Ana Souza", "login": "ANA.SOUZA@EDUCARE.ORG", "password": "segredo123"}"""));
 
 		// then
@@ -278,7 +362,7 @@ class UserControllerTest {
 	@Test
 	void shouldReturnBadRequestWhenCreateBodyIsNotValidJson() throws Exception {
 		// when
-		ResultActions result = mockMvc.perform(postJson("/api/v1/users", "{\"name\": \"Ana\""));
+		ResultActions result = performAsAdmin(postJson("/api/v1/users", "{\"name\": \"Ana\""));
 
 		// then
 		result.andExpect(status().isBadRequest()).andExpect(content().contentType(PROBLEM_JSON));
@@ -293,7 +377,7 @@ class UserControllerTest {
 		given(userService.list(any())).willAnswer(invocation -> page(invocation.getArgument(0), 3, user(Role.USER)));
 
 		// when
-		ResultActions result = mockMvc.perform(get("/api/v1/users").param("size", "2"));
+		ResultActions result = performAsAdmin(get("/api/v1/users").param("size", "2"));
 
 		// then
 		result.andExpect(status().isOk())
@@ -319,7 +403,7 @@ class UserControllerTest {
 		given(userService.list(any())).willAnswer(invocation -> page(invocation.getArgument(0), 0));
 
 		// when
-		ResultActions result = mockMvc.perform(get("/api/v1/users"));
+		ResultActions result = performAsAdmin(get("/api/v1/users"));
 
 		// then
 		result.andExpect(status().isOk())
@@ -337,7 +421,7 @@ class UserControllerTest {
 		given(userService.list(any())).willAnswer(invocation -> page(invocation.getArgument(0), 1, user(Role.USER)));
 
 		// when
-		ResultActions result = mockMvc.perform(get("/api/v1/users").param("size", "500"));
+		ResultActions result = performAsAdmin(get("/api/v1/users").param("size", "500"));
 
 		// then
 		result.andExpect(status().isOk()).andExpect(jsonPath("$.page.size").value(100));
@@ -350,7 +434,7 @@ class UserControllerTest {
 		given(userService.list(any())).willAnswer(invocation -> page(invocation.getArgument(0), 0));
 
 		// when
-		ResultActions result = mockMvc.perform(get("/api/v1/users").param("sort", "login,desc").param("page", "1"));
+		ResultActions result = performAsAdmin(get("/api/v1/users").param("sort", "login,desc").param("page", "1"));
 
 		// then
 		result.andExpect(status().isOk());
@@ -365,7 +449,7 @@ class UserControllerTest {
 		given(userService.list(any())).willAnswer(invocation -> page(invocation.getArgument(0), 0));
 
 		// when
-		ResultActions result = mockMvc.perform(get("/api/v1/users").param("sort", "createdAt,asc"));
+		ResultActions result = performAsAdmin(get("/api/v1/users").param("sort", "createdAt,asc"));
 
 		// then
 		result.andExpect(status().isOk());
@@ -375,7 +459,7 @@ class UserControllerTest {
 	@Test
 	void shouldReturnBadRequestWhenSortingByPassword() throws Exception {
 		// when
-		ResultActions result = mockMvc.perform(get("/api/v1/users").param("sort", "password"));
+		ResultActions result = performAsAdmin(get("/api/v1/users").param("sort", "password"));
 
 		// then
 		result.andExpect(status().isBadRequest())
@@ -387,7 +471,7 @@ class UserControllerTest {
 	@Test
 	void shouldReturnBadRequestWhenSortingByPasswordHashAfterAnAllowedProperty() throws Exception {
 		// when
-		ResultActions result = mockMvc.perform(get("/api/v1/users")
+		ResultActions result = performAsAdmin(get("/api/v1/users")
 				.param("sort", "name,asc")
 				.param("sort", "passwordHash,desc"));
 
@@ -404,7 +488,7 @@ class UserControllerTest {
 		given(userService.findById(ID)).willReturn(user(Role.USER));
 
 		// when
-		ResultActions result = mockMvc.perform(get("/api/v1/users/{id}", ID));
+		ResultActions result = performAsAdmin(get("/api/v1/users/{id}", ID));
 
 		// then
 		result.andExpect(status().isOk())
@@ -425,7 +509,7 @@ class UserControllerTest {
 		given(userService.findById(ID)).willThrow(new UserNotFoundException());
 
 		// when
-		ResultActions result = mockMvc.perform(get("/api/v1/users/{id}", ID));
+		ResultActions result = performAsAdmin(get("/api/v1/users/{id}", ID));
 
 		// then
 		result.andExpect(status().isNotFound())
@@ -437,7 +521,7 @@ class UserControllerTest {
 	@Test
 	void shouldReturnBadRequestWhenIdIsNotAUuid() throws Exception {
 		// when
-		ResultActions result = mockMvc.perform(get("/api/v1/users/abc"));
+		ResultActions result = performAsAdmin(get("/api/v1/users/abc"));
 
 		// then
 		result.andExpect(status().isBadRequest())
@@ -451,10 +535,11 @@ class UserControllerTest {
 	@Test
 	void shouldUpdateUserWhenBodyIsValid() throws Exception {
 		// given
-		given(userService.update(ID, "Ana Souza", "ana.souza@educare.org", Role.ADMIN)).willReturn(user(Role.ADMIN));
+		given(userService.update(eq(ID), eq("Ana Souza"), eq("ana.souza@educare.org"), eq(Role.ADMIN), eq(ADMIN_ID)))
+				.willReturn(user(Role.ADMIN));
 
 		// when
-		ResultActions result = mockMvc.perform(putJson("/api/v1/users/" + ID, VALID_UPDATE_BODY));
+		ResultActions result = performAsAdmin(putJson("/api/v1/users/" + ID, VALID_UPDATE_BODY));
 
 		// then
 		result.andExpect(status().isOk())
@@ -465,12 +550,13 @@ class UserControllerTest {
 				.andExpect(jsonPath("$.password").doesNotExist())
 				.andExpect(jsonPath("$.passwordHash").doesNotExist())
 				.andExpect(content().string(not(containsString(PASSWORD_HASH))));
+		then(userService).should().update(ID, "Ana Souza", "ana.souza@educare.org", Role.ADMIN, ADMIN_ID);
 	}
 
 	@Test
 	void shouldRejectUpdateWhenRoleIsAbsent() throws Exception {
 		// when
-		ResultActions result = mockMvc.perform(putJson("/api/v1/users/" + ID, """
+		ResultActions result = performAsAdmin(putJson("/api/v1/users/" + ID, """
 				{"name": "Ana Souza", "login": "ana.souza@educare.org"}"""));
 
 		// then
@@ -481,7 +567,7 @@ class UserControllerTest {
 	@Test
 	void shouldRejectUpdateWhenRoleIsNotAdminNorUser() throws Exception {
 		// when
-		ResultActions result = mockMvc.perform(putJson("/api/v1/users/" + ID, """
+		ResultActions result = performAsAdmin(putJson("/api/v1/users/" + ID, """
 				{"name": "Ana Souza", "login": "ana.souza@educare.org", "role": "SUPER"}"""));
 
 		// then
@@ -492,7 +578,7 @@ class UserControllerTest {
 	@Test
 	void shouldReturnErrorsForNameAndLoginWhenUpdateDataIsInvalid() throws Exception {
 		// when
-		ResultActions result = mockMvc.perform(putJson("/api/v1/users/" + ID, """
+		ResultActions result = performAsAdmin(putJson("/api/v1/users/" + ID, """
 				{"name": "", "login": "ana", "role": "USER"}"""));
 
 		// then
@@ -505,7 +591,7 @@ class UserControllerTest {
 	@Test
 	void shouldRejectUpdateWhenLoginDomainHasNoDot() throws Exception {
 		// when
-		ResultActions result = mockMvc.perform(putJson("/api/v1/users/" + ID, """
+		ResultActions result = performAsAdmin(putJson("/api/v1/users/" + ID, """
 				{"name": "Ana Souza", "login": "ana@educare", "role": "USER"}"""));
 
 		// then
@@ -516,10 +602,10 @@ class UserControllerTest {
 	@Test
 	void shouldReturnNotFoundWhenUpdatingUserThatDoesNotExist() throws Exception {
 		// given
-		given(userService.update(any(), any(), any(), any())).willThrow(new UserNotFoundException());
+		given(userService.update(any(), any(), any(), any(), any())).willThrow(new UserNotFoundException());
 
 		// when
-		ResultActions result = mockMvc.perform(putJson("/api/v1/users/" + ID, VALID_UPDATE_BODY));
+		ResultActions result = performAsAdmin(putJson("/api/v1/users/" + ID, VALID_UPDATE_BODY));
 
 		// then
 		result.andExpect(status().isNotFound()).andExpect(content().contentType(PROBLEM_JSON));
@@ -528,10 +614,10 @@ class UserControllerTest {
 	@Test
 	void shouldReturnConflictWithoutEmailWhenUpdatingToLoginOfAnotherUser() throws Exception {
 		// given
-		given(userService.update(any(), any(), any(), any())).willThrow(new LoginAlreadyInUseException());
+		given(userService.update(any(), any(), any(), any(), any())).willThrow(new LoginAlreadyInUseException());
 
 		// when
-		ResultActions result = mockMvc.perform(putJson("/api/v1/users/" + ID, VALID_UPDATE_BODY));
+		ResultActions result = performAsAdmin(putJson("/api/v1/users/" + ID, VALID_UPDATE_BODY));
 
 		// then
 		result.andExpect(status().isConflict())
@@ -540,9 +626,23 @@ class UserControllerTest {
 	}
 
 	@Test
+	void shouldReturnConflictProblemWhenDemotingTheLastAdmin() throws Exception {
+		// given
+		given(userService.update(ID, "Ana Souza", "ana.souza@educare.org", Role.USER, ADMIN_ID))
+				.willThrow(new LastAdminException());
+
+		// when
+		ResultActions result = performAsAdmin(putJson("/api/v1/users/" + ID, """
+				{"name": "Ana Souza", "login": "ana.souza@educare.org", "role": "USER"}"""));
+
+		// then
+		expectConflict(result, "O sistema precisa ter ao menos um usuário ADMIN");
+	}
+
+	@Test
 	void shouldReturnBadRequestWhenUpdateBodyIsNotValidJson() throws Exception {
 		// when
-		ResultActions result = mockMvc.perform(putJson("/api/v1/users/" + ID, "{\"name\": \"Ana\""));
+		ResultActions result = performAsAdmin(putJson("/api/v1/users/" + ID, "{\"name\": \"Ana\""));
 
 		// then
 		result.andExpect(status().isBadRequest()).andExpect(content().contentType(PROBLEM_JSON));
@@ -552,7 +652,7 @@ class UserControllerTest {
 	@Test
 	void shouldReturnBadRequestWhenUpdatingWithMalformedId() throws Exception {
 		// when
-		ResultActions result = mockMvc.perform(putJson("/api/v1/users/abc", VALID_UPDATE_BODY));
+		ResultActions result = performAsAdmin(putJson("/api/v1/users/abc", VALID_UPDATE_BODY));
 
 		// then
 		result.andExpect(status().isBadRequest()).andExpect(content().contentType(PROBLEM_JSON));
@@ -564,7 +664,7 @@ class UserControllerTest {
 	@Test
 	void shouldChangePasswordAndReturnNoContentWhenPasswordIsValid() throws Exception {
 		// when
-		ResultActions result = mockMvc.perform(putJson("/api/v1/users/" + ID + "/password", """
+		ResultActions result = performAsAdmin(putJson("/api/v1/users/" + ID + "/password", """
 				{"password": "novaSenha456"}"""));
 
 		// then
@@ -575,7 +675,7 @@ class UserControllerTest {
 	@Test
 	void shouldRejectPasswordChangeWhenPasswordIsTooShort() throws Exception {
 		// when
-		ResultActions result = mockMvc.perform(putJson("/api/v1/users/" + ID + "/password", """
+		ResultActions result = performAsAdmin(putJson("/api/v1/users/" + ID + "/password", """
 				{"password": "curta"}"""));
 
 		// then
@@ -586,7 +686,7 @@ class UserControllerTest {
 	@Test
 	void shouldRejectPasswordChangeWhenPasswordIsAbsent() throws Exception {
 		// when
-		ResultActions result = mockMvc.perform(putJson("/api/v1/users/" + ID + "/password", "{}"));
+		ResultActions result = performAsAdmin(putJson("/api/v1/users/" + ID + "/password", "{}"));
 
 		// then
 		expectSingleFieldError(result, "password");
@@ -596,7 +696,7 @@ class UserControllerTest {
 	@Test
 	void shouldRejectPasswordChangeWhenPasswordExceeds72BytesInUtf8() throws Exception {
 		// when
-		ResultActions result = mockMvc.perform(putJson("/api/v1/users/" + ID + "/password", """
+		ResultActions result = performAsAdmin(putJson("/api/v1/users/" + ID + "/password", """
 				{"password": "%s"}""".formatted("ç".repeat(40))));
 
 		// then
@@ -610,7 +710,7 @@ class UserControllerTest {
 		willThrow(new UserNotFoundException()).given(userService).changePassword(ID, "novaSenha456");
 
 		// when
-		ResultActions result = mockMvc.perform(putJson("/api/v1/users/" + ID + "/password", """
+		ResultActions result = performAsAdmin(putJson("/api/v1/users/" + ID + "/password", """
 				{"password": "novaSenha456"}"""));
 
 		// then
@@ -620,7 +720,7 @@ class UserControllerTest {
 	@Test
 	void shouldReturnBadRequestWhenChangingPasswordWithMalformedId() throws Exception {
 		// when
-		ResultActions result = mockMvc.perform(putJson("/api/v1/users/abc/password", """
+		ResultActions result = performAsAdmin(putJson("/api/v1/users/abc/password", """
 				{"password": "novaSenha456"}"""));
 
 		// then
@@ -633,20 +733,20 @@ class UserControllerTest {
 	@Test
 	void shouldDeleteUserAndReturnNoContentWhenUserExists() throws Exception {
 		// when
-		ResultActions result = mockMvc.perform(delete("/api/v1/users/{id}", ID));
+		ResultActions result = performAsAdmin(delete("/api/v1/users/{id}", ID));
 
 		// then
 		result.andExpect(status().isNoContent()).andExpect(content().string(""));
-		then(userService).should().delete(ID);
+		then(userService).should().delete(ID, ADMIN_ID);
 	}
 
 	@Test
 	void shouldReturnNotFoundWhenDeletingUserThatDoesNotExist() throws Exception {
 		// given
-		willThrow(new UserNotFoundException()).given(userService).delete(ID);
+		willThrow(new UserNotFoundException()).given(userService).delete(ID, ADMIN_ID);
 
 		// when
-		ResultActions result = mockMvc.perform(delete("/api/v1/users/{id}", ID));
+		ResultActions result = performAsAdmin(delete("/api/v1/users/{id}", ID));
 
 		// then
 		result.andExpect(status().isNotFound())
@@ -655,16 +755,45 @@ class UserControllerTest {
 	}
 
 	@Test
+	void shouldReturnConflictProblemWhenAdminDeletesThemselves() throws Exception {
+		// given
+		willThrow(new SelfDeletionException()).given(userService).delete(ADMIN_ID, ADMIN_ID);
+
+		// when
+		ResultActions result = performAsAdmin(delete("/api/v1/users/{id}", ADMIN_ID));
+
+		// then
+		expectConflict(result, "Não é permitido excluir o próprio usuário");
+	}
+
+	@Test
+	void shouldReturnConflictProblemWhenDeletingTheLastAdmin() throws Exception {
+		// given
+		willThrow(new LastAdminException()).given(userService).delete(ID, ADMIN_ID);
+
+		// when
+		ResultActions result = performAsAdmin(delete("/api/v1/users/{id}", ID));
+
+		// then
+		expectConflict(result, "O sistema precisa ter ao menos um usuário ADMIN");
+	}
+
+	@Test
 	void shouldReturnBadRequestWhenDeletingWithMalformedId() throws Exception {
 		// when
-		ResultActions result = mockMvc.perform(delete("/api/v1/users/abc"));
+		ResultActions result = performAsAdmin(delete("/api/v1/users/abc"));
 
 		// then
 		result.andExpect(status().isBadRequest()).andExpect(content().contentType(PROBLEM_JSON));
-		then(userService).should(never()).delete(any());
+		then(userService).should(never()).delete(any(), any());
 	}
 
 	// ---------- helpers ----------
+
+	/** Performs the request as an authenticated ADMIN, the only role allowed on the user endpoints. */
+	private ResultActions performAsAdmin(MockHttpServletRequestBuilder request) throws Exception {
+		return mockMvc.perform(request.header(HttpHeaders.AUTHORIZATION, accessTokens.bearer(ADMIN_ID)));
+	}
 
 	private static User user(Role role) {
 		User user = new User("Ana Souza", "ana.souza@educare.org", PASSWORD_HASH, role);
@@ -692,6 +821,14 @@ class UserControllerTest {
 	private static MockHttpServletRequestBuilder putJson(String uri,
 			String body) {
 		return put(uri).contentType(MediaType.APPLICATION_JSON).content(body);
+	}
+
+	private static void expectConflict(ResultActions result, String detail) throws Exception {
+		result.andExpect(status().isConflict())
+				.andExpect(content().contentType(PROBLEM_JSON))
+				.andExpect(jsonPath("$.status").value(409))
+				.andExpect(jsonPath("$.detail").value(detail))
+				.andExpect(content().string(not(containsString("ana.souza@educare.org"))));
 	}
 
 	private static void expectSingleFieldError(ResultActions result, String field) throws Exception {
