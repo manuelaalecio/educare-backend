@@ -13,3 +13,8 @@ educare:
       secret: ${EDUCARE_JWT_SECRET:educare-dev-only-jwt-secret-not-for-production}
     cors:
       allowed-origins: ${EDUCARE_CORS_ALLOWED_ORIGINS:http://localhost:5173}
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true

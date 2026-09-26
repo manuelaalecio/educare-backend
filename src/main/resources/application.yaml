@@ -24,3 +24,9 @@ educare:
   security:
     jwt:
       expiration: 8h
+# Documentação da API (OpenAPI e Swagger UI) desligada por padrão; só o dev liga.
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false

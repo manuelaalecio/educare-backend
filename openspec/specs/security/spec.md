@@ -7,7 +7,7 @@ Garantir que só usuários autenticados, com a role exigida, acessem a API, que 
 ## Requirements
 
 ### Requirement: Autenticação obrigatória fora das rotas públicas
-O sistema SHALL exigir um access token válido no header `Authorization: Bearer <token>` em todas as rotas, exceto `POST /api/v1/auth/login` e o health do Actuator (`/actuator/health` e sub-rotas), que SHALL funcionar sem token. Sem token, com esquema diferente de `Bearer` ou com token recusado, o sistema SHALL responder `401 Unauthorized` com `Content-Type: application/problem+json` e o header `WWW-Authenticate` começando por `Bearer`, e SHALL NOT executar a operação pedida.
+O sistema SHALL exigir um access token válido no header `Authorization: Bearer <token>` em todas as rotas, exceto `POST /api/v1/auth/login`, o health do Actuator (`/actuator/health` e sub-rotas) e, só no profile `dev`, a documentação da API (ver "Documentação da API só em desenvolvimento"), que SHALL funcionar sem token. Sem token, com esquema diferente de `Bearer` ou com token recusado, o sistema SHALL responder `401 Unauthorized` com `Content-Type: application/problem+json` e o header `WWW-Authenticate` começando por `Bearer`, e SHALL NOT executar a operação pedida.
 
 #### Scenario: Rota protegida sem token
 - **WHEN** um cliente envia `GET /api/v1/users` sem o header `Authorization`
@@ -28,6 +28,21 @@ O sistema SHALL exigir um access token válido no header `Authorization: Bearer 
 #### Scenario: Login público
 - **WHEN** um cliente envia `POST /api/v1/auth/login` com credenciais corretas e sem o header `Authorization`
 - **THEN** a resposta é `200 OK`
+
+### Requirement: Documentação da API só em desenvolvimento
+No profile `dev`, o sistema SHALL publicar o documento OpenAPI em `/v3/api-docs` e o Swagger UI em `/swagger-ui/index.html` (com `/swagger-ui.html` redirecionando para ele), sem exigir token, com o esquema de autenticação Bearer JWT declarado para as rotas protegidas e nenhum esquema exigido em `POST /api/v1/auth/login`. Fora do `dev`, o sistema SHALL NOT publicar a documentação, e essas rotas SHALL se comportar como qualquer rota inexistente: `401 Unauthorized` sem token.
+
+#### Scenario: Documento OpenAPI público no dev
+- **WHEN** um cliente envia `GET /v3/api-docs` sem o header `Authorization`, com o profile `dev`
+- **THEN** a resposta é `200 OK` com o documento OpenAPI, que lista `/api/v1/users`, declara o esquema de autenticação `bearer` com formato `JWT` para a API e não exige nenhum esquema em `POST /api/v1/auth/login`
+
+#### Scenario: Swagger UI público no dev
+- **WHEN** um cliente envia `GET /swagger-ui/index.html` sem o header `Authorization`, com o profile `dev`
+- **THEN** a resposta é `200 OK`
+
+#### Scenario: Documentação desligada fora do dev
+- **WHEN** a aplicação sobe com o profile `prod` e um cliente envia `GET /v3/api-docs` ou `GET /swagger-ui/index.html` sem o header `Authorization`
+- **THEN** a resposta é `401 Unauthorized`, como numa rota inexistente
 
 ### Requirement: Token recusado quando inválido ou de usuário inexistente
 O sistema SHALL recusar com `401 Unauthorized` e um `ProblemDetail` o token malformado, com assinatura que não corresponde à chave do sistema, expirado ou cujo usuário não existe mais. A resposta SHALL NOT indicar qual desses motivos causou a recusa.
