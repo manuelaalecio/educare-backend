@@ -132,8 +132,9 @@ CREATE TABLE users (
 
 ### D7. ArchUnit
 
-- Nova dependência de teste `com.tngtech.archunit:archunit-junit5`. Ela não está no BOM do Boot, então a versão é fixada no `build.gradle`.
-- Classe `architecture/ArchitectureTest` com `@AnalyzeClasses(packages = "com.manuelaalecio.educare_backend", importOptions = DoNotIncludeTests)` e as regras do CLAUDE.md:
+- Nova dependência de teste `com.tngtech.archunit:archunit` (a biblioteca core, sem o engine JUnit). Ela não está no BOM do Boot, então a versão é fixada no `build.gradle`.
+  - *Por que não `archunit-junit5`*: o engine dele é compilado contra o JUnit Platform 1.x, e o Gradle 9 alinha o `junit-platform-launcher` a essa versão (1.14.4), incompatível com o JUnit 6 do Boot 4 (`NoSuchMethodError` ao rodar os testes). Com o core, as regras rodam como testes Jupiter comuns.
+- Classe `architecture/ArchitectureTest`, que importa as classes de produção uma vez (`ClassFileImporter` com `DoNotIncludeTests`, pacote `com.manuelaalecio.educare_backend`) e tem um `@Test` por regra, chamando `rule.check(classes)`, com as regras do CLAUDE.md:
   - camadas `api` → `application` → `domain`, e `infrastructure` → `domain`. A `api` também pode acessar o `domain`, porque o mapper converte a entidade e o enum `Role` (é o padrão do CLAUDE.md, com o mapper entidade ↔ DTO); o que continua proibido é o controller chamar repositórios;
   - `domain` sem dependência de `org.springframework.web..`, `jakarta.servlet..` nem das outras camadas;
   - `application` sem `ResponseEntity`/`HttpStatus`;

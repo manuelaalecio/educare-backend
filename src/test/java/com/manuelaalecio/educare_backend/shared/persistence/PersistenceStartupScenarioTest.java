@@ -63,8 +63,9 @@ class PersistenceStartupScenarioTest {
 		try (ConfigurableApplicationContext context = startApplication()) {
 			// then
 			assertThat(context.isRunning()).isTrue();
-			assertThat(query("SELECT version || ':' || success FROM flyway_schema_history WHERE version IS NOT NULL"))
-				.containsExactly("1:true");
+			assertThat(query("SELECT version || ':' || success FROM flyway_schema_history "
+					+ "WHERE version IS NOT NULL ORDER BY installed_rank"))
+				.containsExactly("1:true", "2:true", "3:true");
 		}
 	}
 

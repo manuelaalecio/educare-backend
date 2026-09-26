@@ -3,3 +3,6 @@ spring:
     url: jdbc:postgresql://localhost:5432/app
     username: app
     password: ${SPRING_DATASOURCE_PASSWORD}
+  flyway:
+    placeholders:
+      admin_password: ${EDUCARE_ADMIN_PASSWORD:educare123}
