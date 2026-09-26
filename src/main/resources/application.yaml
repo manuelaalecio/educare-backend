@@ -2,12 +2,16 @@ spring:
   application:
     name: educare-backend
   profiles:
-    default: prod
+    default: dev
   flyway:
     locations: classpath:db/migration
     validate-on-migrate: true
     clean-disabled: true
     baseline-on-migrate: false
+  data:
+    web:
+      pageable:
+        max-page-size: 100
   jpa:
     open-in-view: false
     hibernate:
