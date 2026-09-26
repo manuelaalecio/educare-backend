@@ -73,8 +73,21 @@ context: |
     shared/persistence/BaseEntity.
 
   ## Segurança
-  - Spring Security, API stateless autenticada por JWT (Bearer).
-  - TODO: definir emissor do token (autenticação própria vs. provedor externo).
+  - Spring Security, API stateless autenticada por JWT (Bearer), validado pelo resource
+    server do Spring Security.
+  - Emissor próprio: o módulo auth emite o token no POST /api/v1/auth/login, a partir do
+    login e da senha (BCrypt) do módulo user. Sem provedor externo.
+  - Token JWT HS256 com validade de 8 horas e sem refresh token: expirou, faz login de novo.
+    Claims só com iss, sub (id do usuário), iat e exp; nenhum dado pessoal nem a role.
+  - A role é consultada no banco a cada requisição autenticada, então exclusão e mudança
+    de role valem na requisição seguinte.
+  - Rotas públicas: só POST /api/v1/auth/login e /actuator/health/**. Todo o resto exige
+    token; 401 e 403 em ProblemDetail, sem indicar o motivo da recusa.
+  - Autorização por role com @PreAuthorize no controller do módulo, não na filter chain
+    em shared.
+  - Chave do JWT (EDUCARE_JWT_SECRET, mínimo 32 bytes) e origens de CORS
+    (EDUCARE_CORS_ALLOWED_ORIGINS, URLs http/https sem caminho, * recusado) por variável
+    de ambiente: obrigatórias no prod, com padrão no dev.
 
   ## Configuração
   - application.yaml com profiles dev (padrão, aponta para o banco local do Compose) e prod;

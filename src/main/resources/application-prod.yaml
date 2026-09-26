@@ -6,3 +6,9 @@ spring:
   flyway:
     placeholders:
       admin_password: ${EDUCARE_ADMIN_PASSWORD}
+educare:
+  security:
+    jwt:
+      secret: ${EDUCARE_JWT_SECRET}
+    cors:
+      allowed-origins: ${EDUCARE_CORS_ALLOWED_ORIGINS}

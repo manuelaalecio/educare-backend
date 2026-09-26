@@ -6,3 +6,10 @@ spring:
   flyway:
     placeholders:
       admin_password: ${EDUCARE_ADMIN_PASSWORD:educare123}
+educare:
+  security:
+    jwt:
+      # Chave só para desenvolvimento e testes; no prod a variável é obrigatória.
+      secret: ${EDUCARE_JWT_SECRET:educare-dev-only-jwt-secret-not-for-production}
+    cors:
+      allowed-origins: ${EDUCARE_CORS_ALLOWED_ORIGINS:http://localhost:5173}

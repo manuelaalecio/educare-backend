@@ -47,6 +47,31 @@ class GlobalExceptionHandlerTest {
 	}
 
 	@Test
+	void shouldReturnBadRequestWithFieldErrorWhenFieldIsRefusedByRule() {
+		// when
+		ProblemDetail problem = handler.handleInvalidField(new SampleInvalidFieldException());
+
+		// then
+		assertThat(problem.getStatus()).isEqualTo(400);
+		assertThat(problem.getTitle()).isEqualTo("Bad Request");
+		assertThat(problem.getDetail()).isEqualTo("Um ou mais campos são inválidos");
+		assertThat(problem.getProperties()).containsExactly(Map.entry(GlobalExceptionHandler.ERRORS_PROPERTY,
+				List.of(Map.of("field", "currentPassword", "message", "Senha atual incorreta"))));
+	}
+
+	@Test
+	void shouldReturnUnauthorizedWithExceptionMessageWhenCredentialsAreRefused() {
+		// when
+		ProblemDetail problem = handler.handleUnauthorized(new SampleUnauthorizedException());
+
+		// then
+		assertThat(problem.getStatus()).isEqualTo(401);
+		assertThat(problem.getTitle()).isEqualTo("Unauthorized");
+		assertThat(problem.getDetail()).isEqualTo("Credenciais recusadas");
+		assertThat(problem.getProperties()).isNullOrEmpty();
+	}
+
+	@Test
 	void shouldReturnNotFoundWithExceptionMessageWhenResourceDoesNotExist() {
 		// when
 		ProblemDetail problem = handler.handleNotFound(new SampleNotFoundException());
@@ -107,6 +132,22 @@ class GlobalExceptionHandlerTest {
 
 		SampleConflictException() {
 			super("Amostra em conflito");
+		}
+
+	}
+
+	static class SampleInvalidFieldException extends InvalidFieldException {
+
+		SampleInvalidFieldException() {
+			super("currentPassword", "Senha atual incorreta");
+		}
+
+	}
+
+	static class SampleUnauthorizedException extends UnauthorizedException {
+
+		SampleUnauthorizedException() {
+			super("Credenciais recusadas");
 		}
 
 	}

@@ -5,6 +5,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import com.manuelaalecio.educare_backend.shared.error.InvalidSortPropertyException;
+import com.manuelaalecio.educare_backend.shared.security.AuthenticatedUser;
 import com.manuelaalecio.educare_backend.user.api.dto.ChangePasswordRequest;
 import com.manuelaalecio.educare_backend.user.api.dto.CreateUserRequest;
 import com.manuelaalecio.educare_backend.user.api.dto.UpdateUserRequest;
@@ -19,6 +20,8 @@ import org.springframework.data.web.PageableDefault;
 import org.springframework.data.web.PagedModel;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -33,6 +36,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 @RestController
 @RequestMapping(UserController.BASE_PATH)
 @RequiredArgsConstructor
+@PreAuthorize("hasRole('ADMIN')")
 public class UserController {
 
 	static final String BASE_PATH = "/api/v1/users";
@@ -70,8 +74,10 @@ public class UserController {
 	}
 
 	@PutMapping("/{id}")
-	public UserResponse update(@PathVariable UUID id, @Valid @RequestBody UpdateUserRequest request) {
-		User user = userService.update(id, request.name(), request.login(), userMapper.toRole(request.role()));
+	public UserResponse update(@PathVariable UUID id, @Valid @RequestBody UpdateUserRequest request,
+			@AuthenticationPrincipal AuthenticatedUser actor) {
+		User user = userService.update(id, request.name(), request.login(), userMapper.toRole(request.role()),
+				actor.id());
 		return userMapper.toResponse(user);
 	}
 
@@ -83,8 +89,8 @@ public class UserController {
 
 	@DeleteMapping("/{id}")
 	@ResponseStatus(HttpStatus.NO_CONTENT)
-	public void delete(@PathVariable UUID id) {
-		userService.delete(id);
+	public void delete(@PathVariable UUID id, @AuthenticationPrincipal AuthenticatedUser actor) {
+		userService.delete(id, actor.id());
 	}
 
 }
