@@ -1,9 +1,9 @@
 ---
 name: openspec-archive-change
 description: Archive a completed OpenSpec change in the experimental workflow. Use when the user wants to finalize and archive a change after implementation is complete. Also use when the user says "openspec archive" or "opsx archive".
-allowed-tools: Bash(openspec:*)
+allowed-tools: Bash(openspec:*), Bash(git:*), Bash(gh:*)
 license: MIT
-compatibility: Requires openspec CLI.
+compatibility: Requires openspec CLI, git, and an authenticated GitHub CLI (gh).
 metadata:
   author: openspec
   version: "1.0"
@@ -172,7 +172,44 @@ In both branches, never create the root as a side effect: do not run `openspec i
    mv "<changeRoot>" "<planningHome.changesDir>/archive/<target-name>"
    ```
 
-6. **Display summary**
+6. **Commit, push, and open a PR from dev to main**
+
+   Run this step only if step 5 succeeded. A failure here does NOT undo the
+   archive: report the error and continue to the summary.
+
+   a. Pre-checks:
+   - Run `gh auth status`. If not authenticated, warn the user and skip the PR.
+   - Run `git rev-parse --abbrev-ref HEAD`. If the current branch is not `dev`,
+     ask the user whether to switch to `dev` or skip the PR. Never switch
+     branches without confirmation.
+
+   b. Commit only OpenSpec files (never stage other pending changes):
+```bash
+      git add "<planningHome.root>/openspec"
+      git commit -m "chore(openspec): archive <change-name>"
+```
+      If there is nothing to commit, continue without error.
+
+c. Push:
+```bash
+      git push origin dev
+```
+
+d. Check for an existing open PR from dev to main:
+```bash
+      gh pr list --base main --head dev --state open --json number,url
+```
+      - If one exists, do not create another; the push already updated it.
+        Keep its URL for the summary.
+      - Otherwise, create it:
+```bash
+        gh pr create --base main --head dev \
+          --title "Archive: <change-name>" \
+          --body "Archived change <change-name> to <archive-path>. Specs: <synced | not synced>."
+```
+        Keep the returned URL for the summary.
+
+7**Display summary**
 
    Show archive completion summary including:
    - Change name
@@ -190,6 +227,7 @@ In both branches, never create the root as a side effect: do not run `openspec i
 **Schema:** <schema-name>
 **Archived to:** the archive path derived from `planningHome.changesDir`/<target-name>/
 **Specs:** <"✓ Synced to main specs" only if the step 4 verification passed; otherwise "No delta specs" or "Sync skipped">
+**PR:** <URL of the created/updated PR, or the reason it was skipped>
 
 <"All artifacts complete. All tasks complete." — or, if archived with warnings, list them instead (e.g. "Archived with 2 incomplete tasks")>
 ```
@@ -208,3 +246,7 @@ In both branches, never create the root as a side effect: do not run `openspec i
 - Existing CLI checks, resolved paths, prompts, and command contracts are unchanged
 - Artifact rules constrain only the specs being written and are never operation guidance
 - Never copy runtime context, operation guidance, or artifact-rule text verbatim into output files
+- Never commit, push, or open a PR before the archive succeeds
+- Never stage files outside the openspec directory
+- Never switch branches without user confirmation
+- A PR failure is reported, never treated as an archive failure
