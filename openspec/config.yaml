@@ -88,6 +88,8 @@ context: |
   - Tipos: unitário, web (@WebMvcTest), persistência (@DataJpaTest), cenário
     (@SpringBootTest + Testcontainers, um teste por Scenario das specs) e ArchUnit.
   - Cobertura JaCoCo mínima de 90% de linhas e branches, verificada no build.
+  - O ./gradlew build roda no CI (.github/workflows/ci.yml) em todo PR para a main;
+    o check build é obrigatório para o merge.
 
 rules:
   proposal:
