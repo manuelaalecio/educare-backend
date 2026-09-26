@@ -90,7 +90,13 @@ Cada action é referenciada pela tag da versão principal (`@vN`), sem SHA nem `
     retention-days: 7
 ```
 
-O `if: failure()` cobre falha de teste e falha de cobertura. Nos dois casos os relatórios existem: o `jacocoTestReport` é finalizador do `test` e roda mesmo com teste falhando. Se a falha for de compilação, os diretórios não existem e o upload só avisa que não encontrou arquivos (`if-no-files-found: warn`, o padrão), sem mascarar o erro original. A retenção de 7 dias basta para investigar e evita acumular armazenamento.
+O `if: failure()` publica o que existir em cada tipo de falha. O `jacocoTestReport` é finalizador do `test`, mas também declara `dependsOn test`, então o Gradle o pula quando o `test` falha. O conteúdo do artifact fica assim:
+
+- Falha de teste: só os relatórios de teste (`build/reports/tests/test/` e `build/test-results/test/`), sem o relatório do JaCoCo.
+- Falha de cobertura: os testes passaram e o `jacocoTestReport` roda, então o artifact traz os relatórios de teste e o do JaCoCo (`build/reports/jacoco/test/`).
+- Falha de compilação: nenhum dos diretórios existe, e o upload só avisa que não encontrou arquivos (`if-no-files-found: warn`, o padrão), sem mascarar o erro original.
+
+O `build.gradle` fica como está de propósito: mudá-lo está fora do escopo (proposal, Non-goals). A lista de caminhos também não muda: um diretório ausente não causa erro. A retenção de 7 dias basta para investigar e evita acumular armazenamento.
 
 - Alternativa: publicar sempre. Descartada, porque o pedido é para facilitar a investigação de falhas, e em execução verde os relatórios não são necessários.
 
