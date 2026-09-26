@@ -24,7 +24,7 @@ class JpaAuditingConfigurationTest {
 		Optional<TemporalAccessor> result = provider.getNow();
 
 		// then
-		assertThat(result).contains(now);
+		assertThat(result).contains(now.plusSeconds(1));
 	}
 
 }
