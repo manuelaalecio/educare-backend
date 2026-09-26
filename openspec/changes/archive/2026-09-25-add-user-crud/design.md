@@ -161,17 +161,30 @@ CREATE TABLE users (
 ```sql
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
-INSERT INTO users (id, name, login, password_hash, role, created_at, updated_at)
-VALUES (gen_random_uuid(), 'Administrador', 'admin@educare.org',
-        crypt($admin_pwd$${admin_password}$admin_pwd$, gen_salt('bf', 10)),
-        'ADMIN', now(), now());
+DO $seed$
+DECLARE
+    admin_password text := substr($admin_pwd$ ${admin_password}$admin_pwd$, 2);
+BEGIN
+    IF admin_password = '' OR admin_password LIKE ('$' || '{%}') THEN
+        RAISE EXCEPTION 'Senha do administrador inicial não configurada (EDUCARE_ADMIN_PASSWORD)';
+    END IF;
+
+    INSERT INTO users (id, name, login, password_hash, role, created_at, updated_at)
+    VALUES (gen_random_uuid(), 'Administrador', 'admin@educare.org',
+            crypt(admin_password, gen_salt('bf', 10)),
+            'ADMIN', now(), now());
+END
+$seed$;
 ```
 
 - **Hash gerado no Postgres**: o `crypt` com `gen_salt('bf')` do `pgcrypto` produz um hash BCrypt `$2a$`, que o `BCryptPasswordEncoder` aceita. Assim a senha em texto não precisa ser convertida em hash antes. O `pgcrypto` é uma extensão *trusted* no PostgreSQL 16, então o usuário dono do database (`app`) pode criá-la sem ser superusuário.
 - **Senha por placeholder do Flyway**, com o valor delimitado por dollar-quote (`$admin_pwd$...$admin_pwd$`) para que aspas na senha não quebrem o SQL:
   - `application-dev.yaml`: `spring.flyway.placeholders.admin_password: ${EDUCARE_ADMIN_PASSWORD:educare123}`;
-  - `application-prod.yaml`: `spring.flyway.placeholders.admin_password: ${EDUCARE_ADMIN_PASSWORD}`, sem padrão. Sem a variável, a propriedade não resolve e a inicialização falha antes de aplicar a V3;
+  - `application-prod.yaml`: `spring.flyway.placeholders.admin_password: ${EDUCARE_ADMIN_PASSWORD}`, sem padrão;
   - `docker-compose.yaml`: `EDUCARE_ADMIN_PASSWORD: ${EDUCARE_ADMIN_PASSWORD}` no serviço `api`, lido do `.env`.
+- **Espaço depois da tag de abertura**, removido pelo `substr`: o Flyway 12 não substitui o placeholder quando ele vem colado no `$` que fecha a tag (`$admin_pwd$${admin_password}`), e o admin seria gravado com o texto literal como senha. Descoberto na implementação (task 3.4).
+- **Senha ausente ou vazia é recusada pela própria V3**: sem a variável, o Spring não falha. O binder mantém a referência não resolvida como texto literal no mapa de placeholders, e o docker compose passa uma string vazia quando a variável falta no `.env`. Por isso a V3 roda num bloco `DO` que lança exceção quando o valor é vazio ou ainda tem a forma de referência não resolvida. O padrão é montado por concatenação (`'$' || '{%}'`) para o Flyway não lê-lo como placeholder. A transação da V3 é desfeita: nenhum admin é criado, a V3 não entra no histórico e a inicialização falha. Efeito colateral aceito: uma senha que tenha literalmente essa forma é recusada.
+  - *Alternativa*: validar a propriedade em Java antes do Flyway (por exemplo, um `FlywayConfigurationCustomizer`). Descartada para manter a regra junto da seed, sem uma classe de produção a mais.
 - **Migration separada da V2**: a estrutura da tabela e os dados iniciais evoluem por motivos diferentes, e a seed pode ser analisada à parte.
 - **Rodar uma única vez é o comportamento desejado**: excluir ou alterar o admin não faz ele voltar, porque o Flyway não reexecuta a V3.
 - O `id` vem de `gen_random_uuid()` (v4), e não do v7 da aplicação. É só a ordenação do UUID que difere, e isso não afeta nenhuma regra.
@@ -188,9 +201,9 @@ VALUES (gen_random_uuid(), 'Administrador', 'admin@educare.org',
 - [BCrypt custa ~100 ms de CPU por hash na VM pequena] → O impacto é baixo, porque criar usuário e trocar senha são operações raras. O custo pode ser ajustado por configuração, se for preciso.
 - [Resposta 409 confirma que um email está cadastrado] → Isso não é um problema aqui, porque os consumidores são funcionários. A mensagem não repete o email, e na autenticação o login com falha deve usar uma mensagem genérica.
 - [Enquanto não houver autenticação, qualquer cliente pode criar um `ADMIN` ou se promover a `ADMIN`] → É mais um motivo para não expor esta versão em produção. A change de autenticação restringe a gestão de usuários a `ADMIN`.
-- [Admin inicial com senha padrão conhecida no `dev`] → O padrão existe só no `application-dev.yaml`. No `prod` não há padrão, e a aplicação não inicia sem `EDUCARE_ADMIN_PASSWORD`. Forçar a troca no primeiro acesso fica para a autenticação.
-- [Checksum do Flyway incluir o valor do placeholder] → Se incluir, trocar `EDUCARE_ADMIN_PASSWORD` depois da primeira execução quebraria a validação na inicialização. A task 3.4 verifica esse comportamento. Se ele se confirmar, a V3 passa a usar um callback do Flyway ou um `ApplicationRunner` idempotente, e a spec não muda.
-- [Placeholder obrigatório mesmo depois de aplicada a V3] → A variável continua exigida em todo start do `prod`. É aceitável: ela fica no `.env` da VM, como a senha do banco.
+- [Admin inicial com senha padrão conhecida no `dev`] → O padrão existe só no `application-dev.yaml`. No `prod` não há padrão, e a aplicação não inicia sem `EDUCARE_ADMIN_PASSWORD` enquanto a V3 não tiver sido aplicada. Forçar a troca no primeiro acesso fica para a autenticação.
+- [Checksum do Flyway incluir o valor do placeholder] → Não se confirmou: o Flyway calcula o checksum antes de substituir o placeholder, então trocar `EDUCARE_ADMIN_PASSWORD` depois da primeira execução não quebra a validação e não altera o admin já criado. O plano B não foi necessário, e um teste de regressão em `AdminSeedScenarioTest` cobre esse comportamento.
+- [Variável só é verificada enquanto a V3 não foi aplicada] → Depois de aplicada a V3, o `prod` inicia mesmo sem `EDUCARE_ADMIN_PASSWORD`, porque a V3 não roda de novo. É aceitável: a variável só serve para a seed, e mantê-la no `.env` da VM não tem custo.
 - [Regras ArchUnit sem um segundo módulo para exercitar as regras entre módulos] → Elas ficam declaradas agora e passam a ter efeito quando `child` entrar.
 
 ## Migration Plan
