@@ -88,6 +88,8 @@ O `Controller` valida o DTO de request (`@Valid`) → converte e chama o `Servic
 
 Obrigatórios: nenhum código de produção entra sem teste, e o trabalho só está concluído com `./gradlew build` verde, incluindo a verificação de cobertura.
 
+O mesmo `./gradlew build` roda no CI (`.github/workflows/ci.yml`) em todo PR para a `main`, e o check `build` é obrigatório para o merge. Em caso de falha, os relatórios de teste e do JaCoCo ficam no artifact `build-reports` da execução.
+
 ### Tipos de teste
 
 | Tipo | Ferramentas | O que cobre |
