@@ -6,6 +6,7 @@ import com.manuelaalecio.educare_backend.auth.api.dto.LoginRequest;
 import com.manuelaalecio.educare_backend.auth.api.dto.MeResponse;
 import com.manuelaalecio.educare_backend.auth.application.AuthService;
 import com.manuelaalecio.educare_backend.shared.security.AuthenticatedUser;
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -33,6 +34,9 @@ public class AuthController {
 	private final AuthMapper authMapper;
 
 	@PostMapping("/login")
+	// public: overrides the bearer token declared for the whole API in the OpenAPI document, so that API clients
+	// generated from it do not send an empty Authorization header, which the resource server refuses with 401
+	@SecurityRequirements
 	public AccessTokenResponse login(@Valid @RequestBody LoginRequest request) {
 		return authMapper.toResponse(authService.login(request.login(), request.password()));
 	}

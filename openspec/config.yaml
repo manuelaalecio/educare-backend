@@ -62,7 +62,7 @@ context: |
   - Erros no formato RFC 9457 (ProblemDetail) via @RestControllerAdvice em shared.
   - Validação de entrada com Bean Validation nos DTOs.
   - Paginação padrão do Spring Data (page, size, sort) em listagens.
-  - Documentação OpenAPI gerada pelo springdoc.
+  - Documentação OpenAPI gerada pelo springdoc, publicada só no profile dev (/v3/api-docs e /swagger-ui/index.html, sem token).
   - CORS liberado apenas para a(s) origem(ns) do frontend, configuradas por variável de ambiente.
 
   ## Persistência

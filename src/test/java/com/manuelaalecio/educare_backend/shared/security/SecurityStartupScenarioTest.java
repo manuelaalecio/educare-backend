@@ -38,10 +38,11 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
 /**
- * Startup scenarios of the requirements "Chave de assinatura obrigatória em produção" and "CORS restrito às origens
- * do frontend": the application is started with the {@code prod} profile, a real web server on a random port and all
- * other configuration valid. Same pattern as {@code AdminSeedScenarioTest}: its own container and a fresh database
- * per test instead of {@code TestcontainersConfiguration}, and the variables read by {@code application-prod.yaml}
+ * Startup scenarios of the requirements "Chave de assinatura obrigatória em produção", "CORS restrito às origens do
+ * frontend" and "Documentação da API só em desenvolvimento": the application is started with the {@code prod}
+ * profile, a real web server on a random port and all other configuration valid. Same pattern as
+ * {@code AdminSeedScenarioTest}: its own container and a fresh database per test instead of
+ * {@code TestcontainersConfiguration}, and the variables read by {@code application-prod.yaml}
  * passed as command-line arguments on a copy of the JVM environment without them.
  */
 @Testcontainers
@@ -110,6 +111,27 @@ class SecurityStartupScenarioTest {
 						HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/actuator/health")).GET().build(),
 						HttpResponse.BodyHandlers.ofString());
 				assertThat(response.statusCode()).isEqualTo(200);
+			}
+		}
+	}
+
+	@Test
+	@DisplayName("Scenario: Documentação desligada fora do dev")
+	void shouldNotPublishApiDocsWhenProfileIsProd() throws IOException, InterruptedException {
+		// given
+		try (ConfigurableApplicationContext context = startProdApplication(argument(JWT_SECRET_VARIABLE, VALID_SECRET),
+				argument(CORS_ALLOWED_ORIGINS_VARIABLE, VALID_ORIGINS))) {
+			int port = context.getEnvironment().getRequiredProperty("local.server.port", Integer.class);
+			try (HttpClient client = HttpClient.newHttpClient()) {
+				for (String path : new String[] {"/v3/api-docs", "/swagger-ui/index.html"}) {
+					// when
+					HttpResponse<String> response = client.send(
+							HttpRequest.newBuilder(URI.create("http://localhost:" + port + path)).GET().build(),
+							HttpResponse.BodyHandlers.ofString());
+
+					// then
+					assertThat(response.statusCode()).as(path).isEqualTo(401);
+				}
 			}
 		}
 	}
