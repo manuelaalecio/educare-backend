@@ -44,7 +44,7 @@ docker compose version
 ### 2. Clonar o repositório
 
 ```bash
-git clone <url-do-repositorio>
+git clone git@github.com:manuelaalecio/educare-backend.git
 cd educare-backend
 ```
 
