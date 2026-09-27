@@ -65,7 +65,7 @@ class PersistenceStartupScenarioTest {
 			assertThat(context.isRunning()).isTrue();
 			assertThat(query("SELECT version || ':' || success FROM flyway_schema_history "
 					+ "WHERE version IS NOT NULL ORDER BY installed_rank"))
-				.containsExactly("1:true", "2:true", "3:true");
+				.containsExactly("1:true", "2:true", "3:true", "4:true");
 		}
 	}
 
