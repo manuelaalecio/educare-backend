@@ -71,6 +71,11 @@ context: |
   - Identificadores: UUID.
   - Colunas de auditoria (created_at, updated_at) nas tabelas de negócio; entidades estendem
     shared/persistence/BaseEntity.
+  - Autoria (created_by, updated_by: id do usuário autenticado que criou e que alterou por
+    último) em toda tabela de negócio, preenchida pela auditoria do Spring Data. Sem FK para
+    users (excluir um usuário não apaga nem bloqueia a trilha). NOT NULL, salvo tabelas com
+    linhas gravadas sem usuário autenticado (ex.: users, pelo admin da seed), com o motivo
+    comentado na migration. Não aparece nas respostas da API.
 
   ## Segurança
   - Spring Security, API stateless autenticada por JWT (Bearer), validado pelo resource
