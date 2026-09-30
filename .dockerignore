@@ -1,6 +1,25 @@
-.gradle/
-build/
+# A imagem é pública: o contexto de build leva só o necessário para o bootJar
+# (gradlew, gradle/, build.gradle, settings.gradle, lombok.config e src/).
+
+# Segredos e variáveis de ambiente, em qualquer nível
+**/.env
+**/.env.*
+
+# Git, CI, ferramentas e IDEs
+.git/
+.github/
+.claude/
 .idea/
 .vscode/
-.env
+
+# Saídas de build
+.gradle/
+build/
+
+# Documentação, planejamento e arquivos operacionais
+openspec/
+deploy/
+tentar-vm.sh
+docker-compose.yaml
 *.log
+*.md

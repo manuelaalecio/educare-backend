@@ -1,0 +1,43 @@
+# Compose de produção (VM do backend). O deploy copia este arquivo e o Caddyfile para
+# ~/app e sobe com: docker compose --env-file .env --env-file deploy.env up -d
+# - .env: mantido à mão na VM (nunca pelo pipeline); ver a seção "Deploy em produção" do README.
+# - deploy.env: gerado pelo deploy, só com IMAGE_TAG (a tag implantada).
+# O banco fica em outra VM, acessado pelo IP privado de DB_HOST.
+name: educare
+
+services:
+  api:
+    image: ghcr.io/manuelaalecio/educare-backend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_DATASOURCE_URL: jdbc:postgresql://${DB_HOST:?DB_HOST ausente no .env}:5432/app
+      SPRING_DATASOURCE_USERNAME: app
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD ausente no .env}
+      EDUCARE_ADMIN_PASSWORD: ${EDUCARE_ADMIN_PASSWORD:?EDUCARE_ADMIN_PASSWORD ausente no .env}
+      EDUCARE_JWT_SECRET: ${EDUCARE_JWT_SECRET:?EDUCARE_JWT_SECRET ausente no .env}
+      EDUCARE_CORS_ALLOWED_ORIGINS: ${EDUCARE_CORS_ALLOWED_ORIGINS:?EDUCARE_CORS_ALLOWED_ORIGINS ausente no .env}
+      # Limites para a VM de 1 GB de RAM (+ 2 GB de swap).
+      JAVA_TOOL_OPTIONS: -Xmx300m -Xss512k -XX:+UseSerialGC -XX:MaxMetaspaceSize=128m
+    ports:
+      # Só de dentro da VM (health check do deploy); o acesso externo é pelo Caddy.
+      - "127.0.0.1:8080:8080"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?SITE_ADDRESS ausente no .env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:
