@@ -234,7 +234,11 @@ management:
       show-components: never
 ```
 
-Testes de cenário (`@SpringBootTest` + Testcontainers) em `SecurityScenarioTest`, um por Scenario do requisito novo, com `@DisplayName` referenciando o cenário: corpo do health só com `status` (com e sem token), `/actuator/env` com token de `ADMIN` → 404 sem conteúdo do ambiente, `/actuator/info` sem token → 401, `/actuator/health/db` com token de `ADMIN` → 404. Não há endpoints novos da API nem alteração de schema (sem migration Flyway).
+Os probes de liveness e readiness continuam ligados (padrão do Spring Boot): `/actuator/health/liveness` e `/actuator/health/readiness` ficam públicos e respondem só o status, e a resposta de `/actuator/health` passa a trazer a lista `groups` com esses dois nomes. **Decisão da usuária**: manter os probes, que custam só os nomes dos grupos na resposta e ficam prontos para um `healthcheck` do Compose ou um deploy que espere a readiness no futuro. A spec aceita a lista `groups` e nada além dela junto do `status`.
+
+- Alternativa: `management.endpoint.health.probes.enabled: false`, com o corpo só `{"status":"UP"}`. Descartada pela decisão acima.
+
+Testes de cenário (`@SpringBootTest` + Testcontainers) em `SecurityScenarioTest`, um por Scenario do requisito novo, com `@DisplayName` referenciando o cenário: corpo do health só com `status` e, no máximo, `groups` (com e sem token), liveness e readiness públicos só com `status`, `/actuator/env` com token de `ADMIN` → 404 sem conteúdo do ambiente, `/actuator/info` sem token → 401, `/actuator/health/db` com token de `ADMIN` → 404. Não há endpoints novos da API nem alteração de schema (sem migration Flyway).
 
 ### D9. Documentação
 

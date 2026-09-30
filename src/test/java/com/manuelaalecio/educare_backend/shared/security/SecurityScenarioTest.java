@@ -1,6 +1,10 @@
 package com.manuelaalecio.educare_backend.shared.security;
 
+import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.containsStringIgnoringCase;
+import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -51,6 +55,7 @@ class SecurityScenarioTest {
 	private static final String USERS = "/api/v1/users";
 	private static final String ME = "/api/v1/auth/me";
 	private static final String LOGIN = "/api/v1/auth/login";
+	private static final String HEALTH = "/actuator/health";
 	private static final String PROBLEM_JSON = "application/problem+json";
 	private static final String UNAUTHORIZED_DETAIL = "Autenticação necessária";
 	private static final Instant NOW = Instant.parse("2026-03-01T10:00:00Z");
@@ -303,7 +308,100 @@ class SecurityScenarioTest {
 						containsStringIgnoringCase("Location")));
 	}
 
+	// ---------- Actuator restrito ao health, sem detalhes ----------
+
+	@Test
+	@DisplayName("Scenario: Health responde só o status")
+	void shouldRespondOnlyStatusWhenHealthHasNoToken() throws Exception {
+		// when
+		ResultActions result = mockMvc.perform(get(HEALTH));
+
+		// then
+		expectOnlyStatusUp(result);
+	}
+
+	@Test
+	@DisplayName("Scenario: Health com token também não mostra detalhes")
+	void shouldRespondOnlyStatusWhenHealthHasAdminToken() throws Exception {
+		// given
+		testUsers.create("Administrador", ADMIN_LOGIN, ADMIN_PASSWORD, "ADMIN");
+		String adminBearer = testUsers.bearer(ADMIN_LOGIN, ADMIN_PASSWORD);
+
+		// when
+		ResultActions result = mockMvc.perform(get(HEALTH).header(HttpHeaders.AUTHORIZATION, adminBearer));
+
+		// then
+		expectOnlyStatusUp(result);
+	}
+
+	@Test
+	@DisplayName("Scenario: Probes de liveness e readiness públicos")
+	void shouldRespondOnlyStatusWhenProbesHaveNoToken() throws Exception {
+		for (String probe : new String[] {HEALTH + "/liveness", HEALTH + "/readiness"}) {
+			// when
+			ResultActions result = mockMvc.perform(get(probe));
+
+			// then
+			result.andExpect(status().isOk())
+					.andExpect(jsonPath("$.status").value("UP"))
+					.andExpect(jsonPath("$.*", hasSize(1)));
+		}
+	}
+
+	@Test
+	@DisplayName("Scenario: Endpoint do Actuator não exposto, com token de ADMIN")
+	void shouldRespondNotFoundWhenAdminRequestsUnexposedActuatorEndpoint() throws Exception {
+		// given
+		testUsers.create("Administrador", ADMIN_LOGIN, ADMIN_PASSWORD, "ADMIN");
+		String adminBearer = testUsers.bearer(ADMIN_LOGIN, ADMIN_PASSWORD);
+
+		// when
+		ResultActions result = mockMvc.perform(get("/actuator/env").header(HttpHeaders.AUTHORIZATION, adminBearer));
+
+		// then
+		result.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.activeProfiles").doesNotExist())
+				.andExpect(jsonPath("$.propertySources").doesNotExist())
+				.andExpect(content().string(not(containsString("spring.datasource"))));
+	}
+
+	@Test
+	@DisplayName("Scenario: Endpoint do Actuator não exposto, sem token")
+	void shouldRespondUnauthorizedWhenUnexposedActuatorEndpointHasNoToken() throws Exception {
+		// when
+		ResultActions result = mockMvc.perform(get("/actuator/info"));
+
+		// then
+		expectUnauthorized(result);
+	}
+
+	@Test
+	@DisplayName("Scenario: Componente do health não exposto")
+	void shouldRespondNotFoundWhenAdminRequestsHealthComponent() throws Exception {
+		// given
+		testUsers.create("Administrador", ADMIN_LOGIN, ADMIN_PASSWORD, "ADMIN");
+		String adminBearer = testUsers.bearer(ADMIN_LOGIN, ADMIN_PASSWORD);
+
+		// when
+		ResultActions result = mockMvc.perform(get(HEALTH + "/db").header(HttpHeaders.AUTHORIZATION, adminBearer));
+
+		// then: the body may be a ProblemDetail (with the HTTP status), but never the database health
+		result.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.details").doesNotExist())
+				.andExpect(content().string(not(containsString("UP"))))
+				.andExpect(content().string(not(containsStringIgnoringCase("PostgreSQL"))));
+	}
+
 	// ---------- helpers ----------
+
+	private void expectOnlyStatusUp(ResultActions result) throws Exception {
+		result.andExpect(status().isOk())
+				.andExpect(jsonPath("$.status").value("UP"))
+				.andExpect(jsonPath("$.groups", containsInAnyOrder("liveness", "readiness")))
+				.andExpect(jsonPath("$.*", hasSize(2)))
+				.andExpect(jsonPath("$.components").doesNotExist())
+				.andExpect(jsonPath("$.details").doesNotExist());
+	}
 
 	private void expectUnauthorized(ResultActions result) throws Exception {
 		result.andExpect(status().isUnauthorized())

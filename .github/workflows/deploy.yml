@@ -1,0 +1,116 @@
+name: Deploy
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Tag da imagem a implantar (ex. SHA curto de 7 caracteres, para rollback). Vazio = SHA curto do commit escolhido.
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+# Never two deploys at once, and never interrupt a deploy in progress.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Resolve image tag
+        id: tag
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          GIT_REF: ${{ github.ref }}
+          COMMIT_SHA: ${{ github.sha }}
+          INPUT_IMAGE_TAG: ${{ inputs.image_tag }}
+        run: |
+          set -euo pipefail
+          tag_pattern='^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$'
+          case "$GIT_REF" in
+            refs/heads/main | refs/tags/v*) ;;
+            *)
+              echo "::error::O deploy só roda a partir da main ou de uma tag v*."
+              exit 1
+              ;;
+          esac
+          if [[ "$GIT_REF" == refs/tags/* ]] && ! git merge-base --is-ancestor "$COMMIT_SHA" origin/main; then
+            echo "::error::O commit da tag não está na main."
+            exit 1
+          fi
+          if [[ "$EVENT_NAME" == workflow_dispatch && -n "$INPUT_IMAGE_TAG" ]]; then
+            if [[ ! "$INPUT_IMAGE_TAG" =~ $tag_pattern ]]; then
+              echo "::error::image_tag inválida: use só letras, números, '_', '.' e '-' (até 128 caracteres)."
+              exit 1
+            fi
+            image_tag="$INPUT_IMAGE_TAG"
+          else
+            image_tag="${COMMIT_SHA::7}"
+          fi
+          echo "image_tag=$image_tag" >> "$GITHUB_OUTPUT"
+          echo "Tag da imagem a implantar: \`$image_tag\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "Tag da imagem a implantar: $image_tag"
+
+      - name: Check that the image exists in GHCR
+        env:
+          OWNER: ${{ github.repository_owner }}
+          IMAGE_TAG: ${{ steps.tag.outputs.image_tag }}
+        run: |
+          set -euo pipefail
+          image="ghcr.io/${OWNER,,}/educare-backend:$IMAGE_TAG"
+          # Anonymous, as the VM pulls it.
+          if ! docker manifest inspect "$image" > /dev/null 2>&1; then
+            echo "::error::Imagem $image não encontrada. Confira se o PR desse commit tinha o label build, se o CI da main terminou e se o pacote é público."
+            exit 1
+          fi
+          echo "Imagem encontrada: $image"
+
+      - name: Set up SSH
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          {
+            echo "Host educare-prod"
+            echo "  HostName $SSH_HOST"
+            echo "  User $SSH_USER"
+            echo "  IdentityFile ~/.ssh/deploy_key"
+            echo "  IdentitiesOnly yes"
+            echo "  BatchMode yes"
+            echo "  StrictHostKeyChecking yes"
+          } > ~/.ssh/config
+
+      - name: Copy the production files
+        run: scp deploy/compose.yaml deploy/Caddyfile deploy/deploy.sh educare-prod:app/
+
+      - name: Deploy and wait for health
+        env:
+          IMAGE_TAG: ${{ steps.tag.outputs.image_tag }}
+        # Expanding the tag here, on the runner, is intended: it was validated against the
+        # Docker tag grammar, and deploy.sh validates it again on the VM.
+        run: |
+          # shellcheck disable=SC2029
+          ssh educare-prod 'bash app/deploy.sh' "$IMAGE_TAG"
+
+      - name: Remove the SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
