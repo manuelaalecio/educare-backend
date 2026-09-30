@@ -38,6 +38,10 @@ context: |
   - O backend é stateless e se comunica com o frontend exclusivamente via HTTP/JSON.
   - Hospedagem: Oracle Cloud Free Tier, com CPU e memória limitadas. Evitar componentes
     de infraestrutura extras (Redis, Kafka, etc.) sem justificativa explícita no design.
+  - Entrega: a imagem linux/amd64 é publicada no GHCR (ghcr.io/manuelaalecio/educare-backend,
+    público) pelo CI da main, e o deploy (tag v* ou workflow_dispatch, com rollback pela
+    tag da imagem) sobe na VM do backend, por SSH, o Docker Compose de deploy/ com a API
+    e o Caddy como proxy reverso. O banco fica em outra VM, acessado pelo IP privado.
 
   ## Stack
   - Java 21, Spring Boot 4.1.1, Gradle.
@@ -97,7 +101,8 @@ context: |
   ## Configuração
   - application.yaml com profiles dev (padrão, aponta para o banco local do Compose) e prod;
     segredos só por variáveis de ambiente, e no prod também as URLs.
-  - Actuator: health (com liveness/readiness) exposto para o healthcheck da VM/Compose.
+  - Actuator: só o health (com os probes liveness/readiness) é exposto na web, em todos os
+    profiles, respondendo só o status, sem componentes nem detalhes. Usado pelo health check do deploy.
 
   ## Testes
   Estratégia completa (tipos de teste, cobertura, convenções e estrutura) no CLAUDE.md,
@@ -106,8 +111,9 @@ context: |
   - Tipos: unitário, web (@WebMvcTest), persistência (@DataJpaTest), cenário
     (@SpringBootTest + Testcontainers, um teste por Scenario das specs) e ArchUnit.
   - Cobertura JaCoCo mínima de 90% de linhas e branches, verificada no build.
-  - O ./gradlew build roda no CI (.github/workflows/ci.yml) em todo PR para a main;
-    o check build é obrigatório para o merge.
+  - O ./gradlew build roda no CI (.github/workflows/ci.yml) em todo PR para a main e em
+    todo push na main; o check build é obrigatório para o merge. No push na main, a imagem
+    é publicada no GHCR (:<sha7> e :latest) só se o PR mergeado tiver o label build.
 
 rules:
   proposal:
