@@ -11,8 +11,8 @@ O frontend (TanStack Start, na Vercel) vai começar a consumir a API, a partir d
 
 - **Contrato OpenAPI versionado no repositório** (`openapi/educare-api.json`), gerado a partir da própria aplicação. O `./gradlew build` falha quando o arquivo commitado não corresponde à API, e um comando Gradle o regenera. O repositório é público, então o frontend lê o contrato da `main` sem credenciais.
 - **Contrato completo para gerar tipos**:
-  - toda operação declara a resposta de sucesso com o schema dela e as respostas de erro que pode devolver (`400`, `401`, `403`, `404`, `409`, conforme as specs), como `application/problem+json`;
-  - um schema único de `ProblemDetail`, com a propriedade opcional `errors` (`field`, `message`);
+  - toda operação declara a resposta de sucesso com o schema dela, em `application/json`, e as respostas de erro que pode devolver (`400`, `401`, `403`, `404`, `409`, conforme as specs), como `application/problem+json`;
+  - um schema único de `ProblemDetail`, com só `title` e `status` obrigatórios e a propriedade opcional `errors` (`field`, `message`);
   - os campos que a API sempre devolve nas respostas são marcados como obrigatórios;
   - o documento é determinístico: chaves ordenadas e um servidor relativo (`/`), sem porta nem host de ambiente.
 - **HTTPS em produção**: o Caddy passa a atender por um nome de domínio, com certificado automático. Enquanto não houver domínio próprio, usa-se um nome do tipo `<ip>.sslip.io`. A mudança fica no `.env` da VM, na liberação da porta 443 e no README; o `deploy/compose.yaml` e o `Caddyfile` já aceitam um domínio em `SITE_ADDRESS`.
