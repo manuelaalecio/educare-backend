@@ -36,6 +36,11 @@ context: |
   - Dois serviços implantados separadamente: este backend (API REST) e um frontend
     (repositório próprio). Este repositório cobre apenas o backend.
   - O backend é stateless e se comunica com o frontend exclusivamente via HTTP/JSON.
+  - O frontend (TanStack Start, na Vercel) é um BFF: o navegador nunca chama a API nem vê o
+    JWT; o servidor do frontend chama a API por HTTPS com o token do usuário.
+  - Contrato da API: o documento OpenAPI fica versionado em openapi/educare-api.json, gerado
+    pela aplicação e verificado no build (./gradlew updateApiContract regenera); o frontend
+    gera os tipos a partir dele.
   - Hospedagem: Oracle Cloud Free Tier, com CPU e memória limitadas. Evitar componentes
     de infraestrutura extras (Redis, Kafka, etc.) sem justificativa explícita no design.
   - Entrega: a imagem linux/amd64 é publicada no GHCR (ghcr.io/manuelaalecio/educare-backend,
@@ -67,6 +72,9 @@ context: |
   - Validação de entrada com Bean Validation nos DTOs.
   - Paginação padrão do Spring Data (page, size, sort) em listagens.
   - Documentação OpenAPI gerada pelo springdoc, publicada só no profile dev (/v3/api-docs e /swagger-ui/index.html, sem token).
+  - O contrato (openapi/educare-api.json) declara em cada operação o status de sucesso e os
+    erros que ela pode devolver (application/problem+json, schema ProblemDetail), e marca como
+    obrigatórios os campos das respostas; campos de resposta opcionais levam @Nullable (jspecify).
   - CORS liberado apenas para a(s) origem(ns) do frontend, configuradas por variável de ambiente.
 
   ## Persistência

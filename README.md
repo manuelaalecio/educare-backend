@@ -127,6 +127,24 @@ Relatórios gerados:
 | Cobertura (JaCoCo) | `build/reports/jacoco/test/html/index.html` |
 | Mutation testing (PIT) | `build/reports/pitest/index.html` |
 
+## Contrato da API
+
+O contrato OpenAPI da API fica versionado em [`openapi/educare-api.json`](openapi/educare-api.json). Ele é gerado pela própria aplicação (springdoc) e é a fonte de onde o frontend gera os tipos dele. Como o repositório é público, o frontend lê o contrato da `main`, sem credenciais:
+
+```
+https://raw.githubusercontent.com/manuelaalecio/educare-backend/main/openapi/educare-api.json
+```
+
+O `./gradlew build` (e, portanto, o CI) **falha quando o arquivo commitado é diferente do documento que a aplicação gera**, ou quando ele não existe. Isso acontece sempre que um endpoint, um DTO ou uma anotação de documentação muda. A mensagem da falha indica o comando que regenera o arquivo:
+
+```bash
+./gradlew updateApiContract    # reescreve openapi/educare-api.json (precisa do Docker, como os testes)
+```
+
+Depois de rodar, revise o diff do `openapi/educare-api.json` e commite junto com a mudança. O diff no PR mostra o que mudou para o frontend.
+
+No profile `dev`, o mesmo documento fica em `/v3/api-docs` e no Swagger UI. Fora do `dev` eles não são servidos: o contrato público é o arquivo do repositório.
+
 ## Deploy em produção
 
 A produção roda numa VM `x86_64` da Oracle Cloud (1 GB de RAM + 2 GB de swap, usuário `ubuntu`, diretório `~/app`), com Docker Compose. A VM não compila nada: ela só baixa a imagem publicada no GitHub Container Registry (GHCR). O PostgreSQL fica em outra VM, acessado pelo IP privado.
@@ -235,6 +253,38 @@ git push origin v0.1.0
 gh run watch                                   # acompanha o deploy
 curl http://<ip-publico>/actuator/health       # deve conter "status":"UP"
 ```
+
+### HTTPS (manual)
+
+O frontend chama a API pelo servidor dele (BFF), com o token e as senhas do login, então a API precisa de HTTPS. O Caddy obtém e renova o certificado sozinho (Let's Encrypt, desafio HTTP na porta 80) quando o `SITE_ADDRESS` é um nome de domínio, e passa a redirecionar o HTTP para o HTTPS. Enquanto não houver domínio próprio, usa-se o [sslip.io](https://sslip.io), que resolve `<ip-com-hifens>.sslip.io` para o próprio IP (ex.: `129-153-10-20.sslip.io` para `129.153.10.20`). Para trocar por um domínio depois, basta mudar o `SITE_ADDRESS`.
+
+**1. Porta 443.** Confira, na console da Oracle, a entrada TCP na porta 443 na security list da VCN (passo 5 da configuração inicial). Na VM, libere a porta também no firewall do sistema. As imagens Ubuntu da Oracle trazem regras de `iptables` que recusam tudo o que não foi liberado, e a regra nova precisa ficar antes da linha `REJECT`:
+
+```bash
+ssh ubuntu@<ip-publico>
+sudo iptables -L INPUT -n --line-numbers                  # na VM: anote o número da linha do REJECT
+sudo iptables -I INPUT <linha-do-reject> -m state --state NEW -p tcp --dport 443 -j ACCEPT
+sudo netfilter-persistent save                            # mantém a regra depois de reiniciar
+```
+
+**2. `.env` da VM.** Em `~/app/.env`, troque o endereço e as origens do CORS. O BFF não usa o CORS, mas o profile `prod` exige a variável, e a origem certa é o domínio do frontend na Vercel:
+
+```
+SITE_ADDRESS=<ip-com-hifens>.sslip.io
+EDUCARE_CORS_ALLOWED_ORIGINS=https://<projeto>.vercel.app
+```
+
+**3. Reiniciar e conferir.** Na VM, em `~/app`, suba de novo com a imagem atual. Depois, da sua máquina, confira o redirecionamento e o certificado (o `curl` sem `-k` falha se o certificado não for válido):
+
+```bash
+docker compose --env-file .env --env-file deploy.env up -d     # na VM, em ~/app
+curl -sI http://<ip-com-hifens>.sslip.io/actuator/health       # 308 com Location https://...
+curl -s https://<ip-com-hifens>.sslip.io/actuator/health       # {"status":"UP"}
+```
+
+O endereço `https://<ip-com-hifens>.sslip.io` é o que o frontend configura na Vercel para chamar a API.
+
+**Voltar para HTTP.** Se o HTTPS der problema, volte `SITE_ADDRESS=:80` no `~/app/.env` e rode de novo o `docker compose --env-file .env --env-file deploy.env up -d`. O BFF fica sem conexão segura até corrigir.
 
 ### Rollback
 
