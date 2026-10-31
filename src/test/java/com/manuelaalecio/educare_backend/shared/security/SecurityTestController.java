@@ -42,7 +42,7 @@ public class SecurityTestController {
 		return ResponseEntity.created(URI.create(CREATED_LOCATION)).build();
 	}
 
-	@PreAuthorize("hasRole('ADMIN')")
+	@PreAuthorize("hasRole('COORDENADOR')")
 	@GetMapping("/api/v1/test-resources/admin")
 	public Map<String, String> adminOnly() {
 		return Map.of("result", "admin");

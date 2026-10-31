@@ -80,7 +80,7 @@ class AuthenticatedUserConverterTest {
 	@Test
 	void shouldAuthenticateUserWithRoleAuthorityWhenUserExists() {
 		// given
-		AuthenticatedUser user = new AuthenticatedUser(USER_ID, "ADMIN");
+		AuthenticatedUser user = new AuthenticatedUser(USER_ID, "COORDENADOR");
 		when(lookup.findById(USER_ID)).thenReturn(Optional.of(new TokenOwner(user, null)));
 
 		// when
@@ -93,13 +93,13 @@ class AuthenticatedUserConverterTest {
 		assertThat(authentication.getName()).isEqualTo(USER_ID.toString());
 		assertThat(authentication.getCredentials()).isNull();
 		assertThat(authentication.getAuthorities()).extracting(GrantedAuthority::getAuthority)
-			.containsExactly("ROLE_ADMIN");
+			.containsExactly("ROLE_COORDENADOR");
 	}
 
 	@Test
 	void shouldRejectTokenWithSameMessageWhenIssuedBeforeLastPasswordChange() {
 		// given
-		AuthenticatedUser user = new AuthenticatedUser(USER_ID, "USER");
+		AuthenticatedUser user = new AuthenticatedUser(USER_ID, "EDUCADOR");
 		when(lookup.findById(USER_ID))
 			.thenReturn(Optional.of(new TokenOwner(user, ISSUED_AT.plusSeconds(1))));
 
@@ -113,7 +113,7 @@ class AuthenticatedUserConverterTest {
 	@ValueSource(longs = {0, 1})
 	void shouldAuthenticateUserWhenTokenIsNotOlderThanLastPasswordChange(long secondsBeforeIssue) {
 		// given
-		AuthenticatedUser user = new AuthenticatedUser(USER_ID, "USER");
+		AuthenticatedUser user = new AuthenticatedUser(USER_ID, "EDUCADOR");
 		when(lookup.findById(USER_ID))
 			.thenReturn(Optional.of(new TokenOwner(user, ISSUED_AT.minusSeconds(secondsBeforeIssue))));
 

@@ -85,9 +85,9 @@ class ClassroomControllerTest {
 	@BeforeEach
 	void setUpAuthenticatedUsers() {
 		given(lookup.findById(ADMIN_ID))
-				.willReturn(Optional.of(new TokenOwner(new AuthenticatedUser(ADMIN_ID, "ADMIN"), null)));
+				.willReturn(Optional.of(new TokenOwner(new AuthenticatedUser(ADMIN_ID, "COORDENADOR"), null)));
 		given(lookup.findById(USER_ID))
-				.willReturn(Optional.of(new TokenOwner(new AuthenticatedUser(USER_ID, "USER"), null)));
+				.willReturn(Optional.of(new TokenOwner(new AuthenticatedUser(USER_ID, "EDUCADOR"), null)));
 	}
 
 	// ---------- authentication and authorization (every endpoint) ----------
@@ -121,7 +121,7 @@ class ClassroomControllerTest {
 
 	@ParameterizedTest(name = "{0}")
 	@MethodSource("endpoints")
-	void shouldRespondForbiddenProblemWithoutCallingServiceWhenUserIsNotAdmin(String endpoint,
+	void shouldRespondForbiddenProblemWithoutCallingServiceWhenUserIsNotCoordinator(String endpoint,
 			Supplier<MockHttpServletRequestBuilder> request) throws Exception {
 		// when
 		ResultActions result = mockMvc.perform(request.get()
@@ -142,7 +142,7 @@ class ClassroomControllerTest {
 		given(classroomService.create("Turma 1")).willReturn(overview(ID, "Turma 1", StudentCounts.ZERO));
 
 		// when
-		ResultActions result = performAsAdmin(postJson(CLASSROOMS, VALID_BODY));
+		ResultActions result = performAsCoordinator(postJson(CLASSROOMS, VALID_BODY));
 
 		// then
 		result.andExpect(status().isCreated())
@@ -165,7 +165,7 @@ class ClassroomControllerTest {
 		given(classroomService.create("Turma 3")).willReturn(overview(ID, "Turma 3", StudentCounts.ZERO));
 
 		// when
-		ResultActions result = performAsAdmin(postJson(CLASSROOMS, """
+		ResultActions result = performAsCoordinator(postJson(CLASSROOMS, """
 				{"name": "  Turma 3 "}"""));
 
 		// then
@@ -177,7 +177,7 @@ class ClassroomControllerTest {
 	@ValueSource(strings = {"{}", "{\"name\": \"\"}", "{\"name\": \"   \"}", "{\"name\": null}"})
 	void shouldRejectCreationWhenNameIsMissingOrBlank(String body) throws Exception {
 		// when
-		ResultActions result = performAsAdmin(postJson(CLASSROOMS, body));
+		ResultActions result = performAsCoordinator(postJson(CLASSROOMS, body));
 
 		// then
 		expectNameError(result, "é obrigatório");
@@ -186,7 +186,7 @@ class ClassroomControllerTest {
 	@Test
 	void shouldRejectCreationWhenNameIsLongerThanMaxLength() throws Exception {
 		// when
-		ResultActions result = performAsAdmin(postJson(CLASSROOMS, nameBody("a".repeat(61))));
+		ResultActions result = performAsCoordinator(postJson(CLASSROOMS, nameBody("a".repeat(61))));
 
 		// then
 		expectNameError(result, "deve ter no máximo 60 caracteres");
@@ -195,7 +195,7 @@ class ClassroomControllerTest {
 	@Test
 	void shouldRejectCreationWithoutErrorsWhenJsonIsUnreadable() throws Exception {
 		// when
-		ResultActions result = performAsAdmin(postJson(CLASSROOMS, """
+		ResultActions result = performAsCoordinator(postJson(CLASSROOMS, """
 				{"name": "Turma 1\""""));
 
 		// then
@@ -211,7 +211,7 @@ class ClassroomControllerTest {
 		given(classroomService.create("turma 1")).willThrow(new ClassroomNameAlreadyInUseException());
 
 		// when
-		ResultActions result = performAsAdmin(postJson(CLASSROOMS, nameBody("turma 1")));
+		ResultActions result = performAsCoordinator(postJson(CLASSROOMS, nameBody("turma 1")));
 
 		// then
 		expectConflict(result, "Já existe uma turma com esse nome");
@@ -228,7 +228,7 @@ class ClassroomControllerTest {
 				overview(OTHER_ID, "Turma 2", StudentCounts.ZERO)));
 
 		// when
-		ResultActions result = performAsAdmin(get(CLASSROOMS));
+		ResultActions result = performAsCoordinator(get(CLASSROOMS));
 
 		// then
 		result.andExpect(status().isOk())
@@ -251,7 +251,7 @@ class ClassroomControllerTest {
 		given(classroomService.list()).willReturn(List.of());
 
 		// when
-		ResultActions result = performAsAdmin(get(CLASSROOMS));
+		ResultActions result = performAsCoordinator(get(CLASSROOMS));
 
 		// then
 		result.andExpect(status().isOk()).andExpect(content().string("[]"));
@@ -265,7 +265,7 @@ class ClassroomControllerTest {
 		given(classroomService.findById(ID)).willReturn(overview(ID, "Maternal A", new StudentCounts(2, 1, 0)));
 
 		// when
-		ResultActions result = performAsAdmin(get(CLASSROOMS + "/{id}", ID));
+		ResultActions result = performAsCoordinator(get(CLASSROOMS + "/{id}", ID));
 
 		// then
 		result.andExpect(status().isOk())
@@ -282,7 +282,7 @@ class ClassroomControllerTest {
 		given(classroomService.findById(ID)).willThrow(new ClassroomNotFoundException());
 
 		// when
-		ResultActions result = performAsAdmin(get(CLASSROOMS + "/{id}", ID));
+		ResultActions result = performAsCoordinator(get(CLASSROOMS + "/{id}", ID));
 
 		// then
 		expectNotFound(result);
@@ -291,7 +291,7 @@ class ClassroomControllerTest {
 	@Test
 	void shouldRespondBadRequestWhenIdIsMalformed() throws Exception {
 		// when
-		ResultActions result = performAsAdmin(get(CLASSROOMS + "/abc"));
+		ResultActions result = performAsCoordinator(get(CLASSROOMS + "/abc"));
 
 		// then
 		result.andExpect(status().isBadRequest()).andExpect(content().contentType(PROBLEM_JSON));
@@ -306,7 +306,7 @@ class ClassroomControllerTest {
 		given(classroomService.rename(ID, "Maternal A")).willReturn(overview(ID, "Maternal A", StudentCounts.ZERO));
 
 		// when
-		ResultActions result = performAsAdmin(putJson(CLASSROOMS + "/" + ID, nameBody(" Maternal A ")));
+		ResultActions result = performAsCoordinator(putJson(CLASSROOMS + "/" + ID, nameBody(" Maternal A ")));
 
 		// then
 		result.andExpect(status().isOk())
@@ -319,7 +319,7 @@ class ClassroomControllerTest {
 	@ValueSource(strings = {"{}", "{\"name\": \"\"}", "{\"name\": \"   \"}"})
 	void shouldRejectRenameWhenNameIsMissingOrBlank(String body) throws Exception {
 		// when
-		ResultActions result = performAsAdmin(putJson(CLASSROOMS + "/" + ID, body));
+		ResultActions result = performAsCoordinator(putJson(CLASSROOMS + "/" + ID, body));
 
 		// then
 		expectNameError(result, "é obrigatório");
@@ -328,7 +328,7 @@ class ClassroomControllerTest {
 	@Test
 	void shouldRejectRenameWhenNameIsLongerThanMaxLength() throws Exception {
 		// when
-		ResultActions result = performAsAdmin(putJson(CLASSROOMS + "/" + ID, nameBody("a".repeat(61))));
+		ResultActions result = performAsCoordinator(putJson(CLASSROOMS + "/" + ID, nameBody("a".repeat(61))));
 
 		// then
 		expectNameError(result, "deve ter no máximo 60 caracteres");
@@ -337,7 +337,7 @@ class ClassroomControllerTest {
 	@Test
 	void shouldRejectRenameWithoutErrorsWhenJsonIsUnreadable() throws Exception {
 		// when
-		ResultActions result = performAsAdmin(putJson(CLASSROOMS + "/" + ID, "{\"name\":"));
+		ResultActions result = performAsCoordinator(putJson(CLASSROOMS + "/" + ID, "{\"name\":"));
 
 		// then
 		result.andExpect(status().isBadRequest())
@@ -352,7 +352,7 @@ class ClassroomControllerTest {
 		given(classroomService.rename(ID, "Maternal A")).willThrow(new ClassroomNotFoundException());
 
 		// when
-		ResultActions result = performAsAdmin(putJson(CLASSROOMS + "/" + ID, nameBody("Maternal A")));
+		ResultActions result = performAsCoordinator(putJson(CLASSROOMS + "/" + ID, nameBody("Maternal A")));
 
 		// then
 		expectNotFound(result);
@@ -364,7 +364,7 @@ class ClassroomControllerTest {
 		given(classroomService.rename(ID, "TURMA 1")).willThrow(new ClassroomNameAlreadyInUseException());
 
 		// when
-		ResultActions result = performAsAdmin(putJson(CLASSROOMS + "/" + ID, nameBody("TURMA 1")));
+		ResultActions result = performAsCoordinator(putJson(CLASSROOMS + "/" + ID, nameBody("TURMA 1")));
 
 		// then
 		expectConflict(result, "Já existe uma turma com esse nome");
@@ -376,7 +376,7 @@ class ClassroomControllerTest {
 	@Test
 	void shouldRespondNoContentWhenDeletingClassroom() throws Exception {
 		// when
-		ResultActions result = performAsAdmin(delete(CLASSROOMS + "/{id}", ID));
+		ResultActions result = performAsCoordinator(delete(CLASSROOMS + "/{id}", ID));
 
 		// then
 		result.andExpect(status().isNoContent()).andExpect(content().string(""));
@@ -389,7 +389,7 @@ class ClassroomControllerTest {
 		willThrow(new ClassroomNotFoundException()).given(classroomService).delete(ID);
 
 		// when
-		ResultActions result = performAsAdmin(delete(CLASSROOMS + "/{id}", ID));
+		ResultActions result = performAsCoordinator(delete(CLASSROOMS + "/{id}", ID));
 
 		// then
 		expectNotFound(result);
@@ -401,7 +401,7 @@ class ClassroomControllerTest {
 		willThrow(new ClassroomHasStudentsException()).given(classroomService).delete(ID);
 
 		// when
-		ResultActions result = performAsAdmin(delete(CLASSROOMS + "/{id}", ID));
+		ResultActions result = performAsCoordinator(delete(CLASSROOMS + "/{id}", ID));
 
 		// then
 		expectConflict(result, "A turma tem alunos. Tire os alunos da turma antes de excluí-la");
@@ -410,14 +410,14 @@ class ClassroomControllerTest {
 	@Test
 	void shouldRespondBadRequestWhenDeletingWithMalformedId() throws Exception {
 		// when
-		ResultActions result = performAsAdmin(delete(CLASSROOMS + "/abc"));
+		ResultActions result = performAsCoordinator(delete(CLASSROOMS + "/abc"));
 
 		// then
 		result.andExpect(status().isBadRequest()).andExpect(content().contentType(PROBLEM_JSON));
 		then(classroomService).shouldHaveNoInteractions();
 	}
 
-	private ResultActions performAsAdmin(MockHttpServletRequestBuilder request) throws Exception {
+	private ResultActions performAsCoordinator(MockHttpServletRequestBuilder request) throws Exception {
 		return mockMvc.perform(request.header(HttpHeaders.AUTHORIZATION, accessTokens.bearer(ADMIN_ID)));
 	}
 

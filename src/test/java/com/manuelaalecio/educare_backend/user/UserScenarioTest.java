@@ -78,7 +78,7 @@ class UserScenarioTest {
 	void setUp() throws Exception {
 		jdbcTemplate.update("DELETE FROM users");
 		clock.setInstant(CREATED_AT);
-		zeliaId = testUsers.create("Zélia", ZELIA_LOGIN, PASSWORD, "ADMIN");
+		zeliaId = testUsers.create("Zélia", ZELIA_LOGIN, PASSWORD, "COORDENADOR");
 		zeliaBearer = testUsers.bearer(ZELIA_LOGIN, PASSWORD);
 	}
 
@@ -98,7 +98,7 @@ class UserScenarioTest {
 		MvcResult mvcResult = result.andExpect(status().isCreated())
 				.andExpect(jsonPath("$.name").value("Ana Souza"))
 				.andExpect(jsonPath("$.login").value(ANA_LOGIN))
-				.andExpect(jsonPath("$.role").value("USER"))
+				.andExpect(jsonPath("$.role").value("EDUCADOR"))
 				.andExpect(jsonPath("$.createdAt").value("2026-03-01T10:00:00Z"))
 				.andExpect(jsonPath("$.updatedAt").value("2026-03-01T10:00:00Z"))
 				.andReturn();
@@ -245,7 +245,7 @@ class UserScenarioTest {
 
 		// when
 		ResultActions result = putUser(brunoId, """
-				{"name": "Bruno Lima", "login": "ana.souza@educare.org", "role": "USER"}""");
+				{"name": "Bruno Lima", "login": "ana.souza@educare.org", "role": "EDUCADOR"}""");
 
 		// then
 		result.andExpect(status().isConflict())
@@ -258,32 +258,32 @@ class UserScenarioTest {
 
 	@Test
 	@DisplayName("Scenario: Criação sem role vira USER")
-	void shouldCreateUserWithUserRoleWhenRoleIsAbsent() throws Exception {
+	void shouldCreateUserWithEducatorRoleWhenRoleIsAbsent() throws Exception {
 		// when
 		ResultActions result = postUser("""
 				{"name": "Ana Souza", "login": "ana.souza@educare.org", "password": "segredo123"}""");
 
 		// then
 		MvcResult mvcResult = result.andExpect(status().isCreated())
-				.andExpect(jsonPath("$.role").value("USER"))
+				.andExpect(jsonPath("$.role").value("EDUCADOR"))
 				.andReturn();
-		assertThat(roleInDatabase(idOf(mvcResult))).isEqualTo("USER");
+		assertThat(roleInDatabase(idOf(mvcResult))).isEqualTo("EDUCADOR");
 	}
 
 	@Test
 	@DisplayName("Scenario: Criação como ADMIN")
-	void shouldCreateAdminWhenRoleIsAdmin() throws Exception {
+	void shouldCreateCoordinatorWhenRoleIsCoordinator() throws Exception {
 		// when
 		ResultActions result = postUser("""
-				{"name": "Ana Souza", "login": "ana.souza@educare.org", "password": "segredo123", "role": "ADMIN"}""");
+				{"name": "Ana Souza", "login": "ana.souza@educare.org", "password": "segredo123", "role": "COORDENADOR"}""");
 
 		// then
 		MvcResult mvcResult = result.andExpect(status().isCreated())
-				.andExpect(jsonPath("$.role").value("ADMIN"))
+				.andExpect(jsonPath("$.role").value("COORDENADOR"))
 				.andReturn();
 		performAsZelia(get(USERS + "/{id}", idOf(mvcResult)))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.role").value("ADMIN"));
+				.andExpect(jsonPath("$.role").value("COORDENADOR"));
 	}
 
 	@Test
@@ -299,19 +299,47 @@ class UserScenarioTest {
 	}
 
 	@Test
-	@DisplayName("Scenario: Promoção de USER para ADMIN")
-	void shouldPromoteUserToAdminWhenUpdatedWithAdminRole() throws Exception {
+	@DisplayName("Scenario: Valor antigo ADMIN recusado na criação")
+	void shouldRejectCreationWithRoleMessageWhenRoleIsFormerAdmin() throws Exception {
+		// when
+		ResultActions result = postUser("""
+				{"name": "Ana Souza", "login": "ana.souza@educare.org", "password": "segredo123", "role": "ADMIN"}""");
+
+		// then
+		assertValidationError(result, "role");
+		result.andExpect(jsonPath("$.errors[0].message").value("deve ser COORDENADOR ou EDUCADOR"));
+		assertThat(countUsersBesidesZelia()).isZero();
+	}
+
+	@Test
+	@DisplayName("Scenario: Valor antigo USER recusado na alteração")
+	void shouldRejectUpdateWhenRoleIsFormerUser() throws Exception {
 		// given
 		UUID id = createAna();
 
 		// when
 		ResultActions result = putUser(id, """
-				{"name": "Ana Souza", "login": "ana.souza@educare.org", "role": "ADMIN"}""");
+				{"name": "Ana Souza", "login": "ana.souza@educare.org", "role": "USER"}""");
+
+		// then
+		assertValidationError(result, "role");
+		assertThat(roleInDatabase(id)).isEqualTo("EDUCADOR");
+	}
+
+	@Test
+	@DisplayName("Scenario: Promoção de USER para ADMIN")
+	void shouldPromoteEducatorToCoordinatorWhenUpdatedWithCoordinatorRole() throws Exception {
+		// given
+		UUID id = createAna();
+
+		// when
+		ResultActions result = putUser(id, """
+				{"name": "Ana Souza", "login": "ana.souza@educare.org", "role": "COORDENADOR"}""");
 
 		// then
 		result.andExpect(status().isOk())
-				.andExpect(jsonPath("$.role").value("ADMIN"));
-		assertThat(roleInDatabase(id)).isEqualTo("ADMIN");
+				.andExpect(jsonPath("$.role").value("COORDENADOR"));
+		assertThat(roleInDatabase(id)).isEqualTo("COORDENADOR");
 	}
 
 	@Test
@@ -326,7 +354,7 @@ class UserScenarioTest {
 
 		// then
 		assertValidationError(result, "role");
-		assertThat(roleInDatabase(id)).isEqualTo("USER");
+		assertThat(roleInDatabase(id)).isEqualTo("EDUCADOR");
 	}
 
 	// ---------- Senha protegida ----------
@@ -386,7 +414,7 @@ class UserScenarioTest {
 				.andExpect(jsonPath("$.id").value(id.toString()))
 				.andExpect(jsonPath("$.name").value("Ana Souza"))
 				.andExpect(jsonPath("$.login").value(ANA_LOGIN))
-				.andExpect(jsonPath("$.role").value("USER"))
+				.andExpect(jsonPath("$.role").value("EDUCADOR"))
 				.andExpect(jsonPath("$.createdAt").value("2026-03-01T10:00:00Z"))
 				.andExpect(jsonPath("$.updatedAt").value("2026-03-01T10:00:00Z"));
 	}
@@ -454,7 +482,7 @@ class UserScenarioTest {
 
 	@Test
 	@DisplayName("Scenario: Nenhum usuário cadastrado")
-	void shouldReturnOnlyTheRequestingAdminWhenThereAreNoOtherUsers() throws Exception {
+	void shouldReturnOnlyTheRequestingCoordinatorWhenThereAreNoOtherUsers() throws Exception {
 		// when
 		ResultActions result = performAsZelia(get(USERS));
 
@@ -507,13 +535,13 @@ class UserScenarioTest {
 
 		// when
 		ResultActions result = putUser(id, """
-				{"name": "Ana Souza Lima", "login": "ana.lima@educare.org", "role": "USER"}""");
+				{"name": "Ana Souza Lima", "login": "ana.lima@educare.org", "role": "EDUCADOR"}""");
 
 		// then
 		result.andExpect(status().isOk())
 				.andExpect(jsonPath("$.name").value("Ana Souza Lima"))
 				.andExpect(jsonPath("$.login").value("ana.lima@educare.org"))
-				.andExpect(jsonPath("$.role").value("USER"))
+				.andExpect(jsonPath("$.role").value("EDUCADOR"))
 				.andExpect(jsonPath("$.createdAt").value("2026-03-01T10:00:00Z"))
 				.andExpect(jsonPath("$.updatedAt").value("2026-03-02T09:00:00Z"));
 		String hashAfter = passwordHashInDatabase(id);
@@ -529,7 +557,7 @@ class UserScenarioTest {
 
 		// when
 		ResultActions result = putUser(id, """
-				{"name": "Ana S.", "login": "ANA.SOUZA@EDUCARE.ORG", "role": "USER"}""");
+				{"name": "Ana S.", "login": "ANA.SOUZA@EDUCARE.ORG", "role": "EDUCADOR"}""");
 
 		// then
 		result.andExpect(status().isOk())
@@ -546,7 +574,7 @@ class UserScenarioTest {
 
 		// when
 		ResultActions result = putUser(id, """
-				{"name": "", "login": "ana", "role": "USER"}""");
+				{"name": "", "login": "ana", "role": "EDUCADOR"}""");
 
 		// then
 		result.andExpect(status().isBadRequest())
@@ -564,7 +592,7 @@ class UserScenarioTest {
 		ResultActions result = performAsZelia(put(USERS + "/" + MISSING_ID)
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
-						{"name": "Ana Souza", "login": "ana.souza@educare.org", "role": "USER"}"""));
+						{"name": "Ana Souza", "login": "ana.souza@educare.org", "role": "EDUCADOR"}"""));
 
 		// then
 		result.andExpect(status().isNotFound())
@@ -594,7 +622,7 @@ class UserScenarioTest {
 
 	@Test
 	@DisplayName("Scenario: Redefinição desconecta o usuário afetado")
-	void shouldDisconnectOnlyAffectedUserWhenAdminResetsPassword() throws Exception {
+	void shouldDisconnectOnlyAffectedUserWhenCoordinatorResetsPassword() throws Exception {
 		// given
 		UUID anaId = createAna();
 		clock.setInstant(Instant.parse("2026-03-01T10:00:00Z"));
@@ -617,7 +645,7 @@ class UserScenarioTest {
 
 	@Test
 	@DisplayName("Scenario: ADMIN que redefine a própria senha é desconectado")
-	void shouldDisconnectAdminWhenAdminResetsOwnPassword() throws Exception {
+	void shouldDisconnectCoordinatorWhenCoordinatorResetsOwnPassword() throws Exception {
 		// given
 		clock.setInstant(Instant.parse("2026-03-01T10:00:00Z"));
 		String adminBearer = testUsers.bearer(ZELIA_LOGIN, PASSWORD);
@@ -740,13 +768,13 @@ class UserScenarioTest {
 		assertThat(countUsersBesidesZelia()).isEqualTo(1);
 	}
 
-	// ---------- Gestão de usuários restrita a ADMIN ----------
+	// ---------- Gestão de usuários restrita a COORDENADOR ----------
 
 	@Test
 	@DisplayName("Scenario: ADMIN lista usuários")
-	void shouldListUsersWhenRequesterIsAdmin() throws Exception {
+	void shouldListUsersWhenRequesterIsCoordinator() throws Exception {
 		// given
-		testUsers.create("Administrador", ADMIN_LOGIN, PASSWORD, "ADMIN");
+		testUsers.create("Administrador", ADMIN_LOGIN, PASSWORD, "COORDENADOR");
 		String adminBearer = testUsers.bearer(ADMIN_LOGIN, PASSWORD);
 
 		// when
@@ -761,12 +789,12 @@ class UserScenarioTest {
 	@DisplayName("Scenario: USER não cria usuário")
 	void shouldRejectCreationWhenRequesterIsUser() throws Exception {
 		// given
-		testUsers.create("Ana Souza", ANA_LOGIN, PASSWORD, "USER");
+		testUsers.create("Ana Souza", ANA_LOGIN, PASSWORD, "EDUCADOR");
 		String anaBearer = testUsers.bearer(ANA_LOGIN, PASSWORD);
 
 		// when
 		ResultActions result = mockMvc.perform(json(post(USERS), """
-				{"name": "Carla", "login": "carla@educare.org", "password": "segredo123", "role": "ADMIN"}""")
+				{"name": "Carla", "login": "carla@educare.org", "password": "segredo123", "role": "COORDENADOR"}""")
 				.header(HttpHeaders.AUTHORIZATION, anaBearer));
 
 		// then
@@ -779,24 +807,24 @@ class UserScenarioTest {
 	@DisplayName("Scenario: USER não se promove")
 	void shouldRejectSelfPromotionWhenRequesterIsUser() throws Exception {
 		// given
-		UUID anaId = testUsers.create("Ana Souza", ANA_LOGIN, PASSWORD, "USER");
+		UUID anaId = testUsers.create("Ana Souza", ANA_LOGIN, PASSWORD, "EDUCADOR");
 		String anaBearer = testUsers.bearer(ANA_LOGIN, PASSWORD);
 
 		// when
 		ResultActions result = mockMvc.perform(json(put(USERS + "/{id}", anaId), """
-				{"name": "Ana Souza", "login": "ana.souza@educare.org", "role": "ADMIN"}""")
+				{"name": "Ana Souza", "login": "ana.souza@educare.org", "role": "COORDENADOR"}""")
 				.header(HttpHeaders.AUTHORIZATION, anaBearer));
 
 		// then
 		result.andExpect(status().isForbidden());
-		assertThat(roleInDatabase(anaId)).isEqualTo("USER");
+		assertThat(roleInDatabase(anaId)).isEqualTo("EDUCADOR");
 	}
 
 	@Test
 	@DisplayName("Scenario: Exclusão sem token")
 	void shouldRejectDeletionWhenAuthorizationHeaderIsMissing() throws Exception {
 		// given
-		UUID anaId = testUsers.create("Ana Souza", ANA_LOGIN, PASSWORD, "USER");
+		UUID anaId = testUsers.create("Ana Souza", ANA_LOGIN, PASSWORD, "EDUCADOR");
 
 		// when
 		ResultActions result = mockMvc.perform(delete(USERS + "/{id}", anaId));
@@ -806,16 +834,16 @@ class UserScenarioTest {
 		assertThat(countUsersWithLogin(ANA_LOGIN)).isEqualTo(1);
 	}
 
-	// ---------- Sistema nunca fica sem ADMIN ----------
+	// ---------- Sistema nunca fica sem COORDENADOR ----------
 	// These scenarios remove Zélia first, so the only ADMINs are exactly the ones named in the spec.
 
 	@Test
 	@DisplayName("Scenario: ADMIN tenta se excluir")
-	void shouldRejectDeletionWhenAdminDeletesThemself() throws Exception {
+	void shouldRejectDeletionWhenCoordinatorDeletesThemself() throws Exception {
 		// given
 		removeZelia();
-		UUID adminId = testUsers.create("Administrador", ADMIN_LOGIN, PASSWORD, "ADMIN");
-		testUsers.create("Bruno Lima", BRUNO_LOGIN, PASSWORD, "ADMIN");
+		UUID adminId = testUsers.create("Administrador", ADMIN_LOGIN, PASSWORD, "COORDENADOR");
+		testUsers.create("Bruno Lima", BRUNO_LOGIN, PASSWORD, "COORDENADOR");
 		String adminBearer = testUsers.bearer(ADMIN_LOGIN, PASSWORD);
 
 		// when
@@ -830,49 +858,50 @@ class UserScenarioTest {
 
 	@Test
 	@DisplayName("Scenario: Último ADMIN tenta se rebaixar")
-	void shouldRejectDemotionWhenAdminIsTheLastOne() throws Exception {
+	void shouldRejectDemotionWhenCoordinatorIsTheLastOne() throws Exception {
 		// given
 		removeZelia();
-		UUID adminId = testUsers.create("Administrador", ADMIN_LOGIN, PASSWORD, "ADMIN");
+		UUID adminId = testUsers.create("Administrador", ADMIN_LOGIN, PASSWORD, "COORDENADOR");
 		String adminBearer = testUsers.bearer(ADMIN_LOGIN, PASSWORD);
 
 		// when
 		ResultActions result = mockMvc.perform(json(put(USERS + "/{id}", adminId), """
-				{"name": "Administrador", "login": "admin@educare.org", "role": "USER"}""")
+				{"name": "Administrador", "login": "admin@educare.org", "role": "EDUCADOR"}""")
 				.header(HttpHeaders.AUTHORIZATION, adminBearer));
 
 		// then
-		result.andExpect(status().isConflict());
-		assertThat(roleInDatabase(adminId)).isEqualTo("ADMIN");
+		result.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.detail").value("O sistema precisa ter ao menos um(a) coordenador(a)"));
+		assertThat(roleInDatabase(adminId)).isEqualTo("COORDENADOR");
 	}
 
 	@Test
 	@DisplayName("Scenario: ADMIN se rebaixa havendo outro ADMIN")
-	void shouldDemoteAdminWhenAnotherAdminRemains() throws Exception {
+	void shouldDemoteCoordinatorWhenAnotherCoordinatorRemains() throws Exception {
 		// given
 		removeZelia();
-		UUID adminId = testUsers.create("Administrador", ADMIN_LOGIN, PASSWORD, "ADMIN");
-		testUsers.create("Bruno Lima", BRUNO_LOGIN, PASSWORD, "ADMIN");
+		UUID adminId = testUsers.create("Administrador", ADMIN_LOGIN, PASSWORD, "COORDENADOR");
+		testUsers.create("Bruno Lima", BRUNO_LOGIN, PASSWORD, "COORDENADOR");
 		String adminBearer = testUsers.bearer(ADMIN_LOGIN, PASSWORD);
 
 		// when
 		ResultActions result = mockMvc.perform(json(put(USERS + "/{id}", adminId), """
-				{"name": "Administrador", "login": "admin@educare.org", "role": "USER"}""")
+				{"name": "Administrador", "login": "admin@educare.org", "role": "EDUCADOR"}""")
 				.header(HttpHeaders.AUTHORIZATION, adminBearer));
 
 		// then
 		result.andExpect(status().isOk())
-				.andExpect(jsonPath("$.role").value("USER"));
-		assertThat(roleInDatabase(adminId)).isEqualTo("USER");
+				.andExpect(jsonPath("$.role").value("EDUCADOR"));
+		assertThat(roleInDatabase(adminId)).isEqualTo("EDUCADOR");
 	}
 
 	@Test
 	@DisplayName("Scenario: ADMIN exclui outro ADMIN")
-	void shouldDeleteAnotherAdminWhenAdminRemains() throws Exception {
+	void shouldDeleteAnotherCoordinatorWhenCoordinatorRemains() throws Exception {
 		// given
 		removeZelia();
-		UUID adminId = testUsers.create("Administrador", ADMIN_LOGIN, PASSWORD, "ADMIN");
-		UUID brunoId = testUsers.create("Bruno Lima", BRUNO_LOGIN, PASSWORD, "ADMIN");
+		UUID adminId = testUsers.create("Administrador", ADMIN_LOGIN, PASSWORD, "COORDENADOR");
+		UUID brunoId = testUsers.create("Bruno Lima", BRUNO_LOGIN, PASSWORD, "COORDENADOR");
 		String adminBearer = testUsers.bearer(ADMIN_LOGIN, PASSWORD);
 
 		// when
@@ -882,7 +911,7 @@ class UserScenarioTest {
 		// then
 		result.andExpect(status().isNoContent());
 		assertThat(countUsersWithLogin(BRUNO_LOGIN)).isZero();
-		assertThat(roleInDatabase(adminId)).isEqualTo("ADMIN");
+		assertThat(roleInDatabase(adminId)).isEqualTo("COORDENADOR");
 	}
 
 	// ---------- helpers ----------

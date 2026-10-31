@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 class TokenOwnerTest {
 
 	private static final AuthenticatedUser USER =
-			new AuthenticatedUser(UUID.fromString("0190f4a2-0000-7000-8000-000000000001"), "USER");
+			new AuthenticatedUser(UUID.fromString("0190f4a2-0000-7000-8000-000000000001"), "EDUCADOR");
 	private static final Instant CHANGED_AT = Instant.parse("2026-03-01T10:30:00Z");
 
 	@Test

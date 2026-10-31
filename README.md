@@ -324,6 +324,22 @@ argocd app set educare --sync-policy automated --auto-prune --self-heal
 
 Ao religar o sync, o Image Updater volta para a maior `vX.Y.Z`, a menos que a tag tenha sido fixada antes no `ImageUpdater`, como no rollback padrão. Prefira o rollback padrão, ou publique uma versão nova com a correção.
 
+**Voltar para uma versão anterior à `V7` (funções `COORDENADOR`/`EDUCADOR`).** A `V7__rename_roles_to_coordinator_educator.sql` converte as roles `ADMIN`/`USER` e não é compatível com as versões anteriores: com os dados novos, uma imagem antiga responde `500` em toda requisição autenticada. Antes de fixar a tag antiga, reverta os dados à mão (o Flyway não tem `undo`):
+
+```bash
+kubectl -n educare exec -i postgres-0 -- psql -U app -d app -v ON_ERROR_STOP=1 <<'SQL'
+BEGIN;
+ALTER TABLE users DROP CONSTRAINT users_role_check;
+UPDATE users SET role = CASE role WHEN 'COORDENADOR' THEN 'ADMIN' WHEN 'EDUCADOR' THEN 'USER' END;
+ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('ADMIN', 'USER'));
+ALTER TABLE users ALTER COLUMN role SET DEFAULT 'USER';
+DELETE FROM flyway_schema_history WHERE version = '7';
+COMMIT;
+SQL
+```
+
+O front precisa voltar junto para a versão que espera `ADMIN`/`USER`.
+
 ## Como o projeto é desenvolvido
 
 O desenvolvimento segue **Spec-Driven Development (SDD)** com [OpenSpec](https://github.com/Fission-AI/OpenSpec), assistido por IA:

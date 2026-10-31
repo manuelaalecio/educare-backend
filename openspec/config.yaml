@@ -23,6 +23,8 @@ context: |
   - Criança -> Child
   - Responsável -> Guardian
   - Usuário / funcionário -> User
+  - Coordenador(a) -> role COORDENADOR (acessa as configurações: usuários e turmas)
+  - Educador(a) -> role EDUCADOR
   - Turma -> Classroom
   - Matrícula -> Enrollment
   - Rematrícula -> Reenrollment

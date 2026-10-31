@@ -107,7 +107,7 @@ class SecurityScenarioTest {
 	@DisplayName("Scenario: Esquema de autenticação diferente de Bearer")
 	void shouldRespondUnauthorizedWhenSchemeIsNotBearer() throws Exception {
 		// given
-		testUsers.create("Administrador", ADMIN_LOGIN, ADMIN_PASSWORD, "ADMIN");
+		testUsers.create("Administrador", ADMIN_LOGIN, ADMIN_PASSWORD, "COORDENADOR");
 
 		// when
 		ResultActions result = mockMvc.perform(get(ME)
@@ -141,7 +141,7 @@ class SecurityScenarioTest {
 	@DisplayName("Scenario: Login público")
 	void shouldRespondOkWhenLoginHasCorrectCredentialsAndNoToken() throws Exception {
 		// given
-		testUsers.create("Ana Souza", ANA_LOGIN, ANA_PASSWORD, "USER");
+		testUsers.create("Ana Souza", ANA_LOGIN, ANA_PASSWORD, "EDUCADOR");
 
 		// when
 		ResultActions result = mockMvc.perform(post(LOGIN)
@@ -170,7 +170,7 @@ class SecurityScenarioTest {
 	@DisplayName("Scenario: Token assinado com outra chave")
 	void shouldRespondUnauthorizedWhenTokenIsSignedWithAnotherKey() throws Exception {
 		// given: an existing user and a token for her id, within its validity, signed with another key
-		UUID ana = testUsers.create("Ana Souza", ANA_LOGIN, ANA_PASSWORD, "USER");
+		UUID ana = testUsers.create("Ana Souza", ANA_LOGIN, ANA_PASSWORD, "EDUCADOR");
 		String token = accessTokens.signedWithAnotherKey(ana);
 
 		// when
@@ -184,8 +184,8 @@ class SecurityScenarioTest {
 	@DisplayName("Scenario: Token de usuário excluído")
 	void shouldRespondUnauthorizedWhenTokenUserWasDeleted() throws Exception {
 		// given
-		testUsers.create("Administrador", ADMIN_LOGIN, ADMIN_PASSWORD, "ADMIN");
-		UUID ana = testUsers.create("Ana Souza", ANA_LOGIN, ANA_PASSWORD, "USER");
+		testUsers.create("Administrador", ADMIN_LOGIN, ADMIN_PASSWORD, "COORDENADOR");
+		UUID ana = testUsers.create("Ana Souza", ANA_LOGIN, ANA_PASSWORD, "EDUCADOR");
 		String anaBearer = testUsers.bearer(ANA_LOGIN, ANA_PASSWORD);
 		String adminBearer = testUsers.bearer(ADMIN_LOGIN, ADMIN_PASSWORD);
 		mockMvc.perform(delete(USERS + "/" + ana).header(HttpHeaders.AUTHORIZATION, adminBearer))
@@ -202,7 +202,7 @@ class SecurityScenarioTest {
 	@DisplayName("Scenario: Token de usuário existente")
 	void shouldRespondOkWhenTokenUserExists() throws Exception {
 		// given
-		testUsers.create("Ana Souza", ANA_LOGIN, ANA_PASSWORD, "USER");
+		testUsers.create("Ana Souza", ANA_LOGIN, ANA_PASSWORD, "EDUCADOR");
 		String anaBearer = testUsers.bearer(ANA_LOGIN, ANA_PASSWORD);
 
 		// when
@@ -217,7 +217,7 @@ class SecurityScenarioTest {
 	@DisplayName("Scenario: Token emitido antes da troca de senha")
 	void shouldRespondUnauthorizedLikeMalformedTokenWhenTokenPredatesPasswordChange() throws Exception {
 		// given
-		testUsers.create("Ana Souza", ANA_LOGIN, ANA_PASSWORD, "USER");
+		testUsers.create("Ana Souza", ANA_LOGIN, ANA_PASSWORD, "EDUCADOR");
 		clock.setInstant(Instant.parse("2026-03-01T10:00:00Z"));
 		String tokenA = testUsers.bearer(ANA_LOGIN, ANA_PASSWORD);
 		clock.setInstant(Instant.parse("2026-03-01T10:20:00Z"));
@@ -242,7 +242,7 @@ class SecurityScenarioTest {
 	@DisplayName("Scenario: Token emitido no mesmo segundo da troca")
 	void shouldRespondOkWhenTokenWasIssuedInSameSecondAsPasswordChange() throws Exception {
 		// given
-		testUsers.create("Ana Souza", ANA_LOGIN, ANA_PASSWORD, "USER");
+		testUsers.create("Ana Souza", ANA_LOGIN, ANA_PASSWORD, "EDUCADOR");
 		clock.setInstant(Instant.parse("2026-03-01T10:00:00.100Z"));
 		String tokenA = testUsers.bearer(ANA_LOGIN, ANA_PASSWORD);
 		clock.setInstant(Instant.parse("2026-03-01T10:00:00.500Z"));
@@ -262,7 +262,7 @@ class SecurityScenarioTest {
 	@DisplayName("Scenario: Usuário sem troca de senha registrada")
 	void shouldRespondOkWhenUserNeverChangedPassword() throws Exception {
 		// given
-		UUID ana = testUsers.create("Ana Souza", ANA_LOGIN, ANA_PASSWORD, "USER");
+		UUID ana = testUsers.create("Ana Souza", ANA_LOGIN, ANA_PASSWORD, "EDUCADOR");
 		assertThat(jdbcTemplate.queryForObject("SELECT password_changed_at IS NULL FROM users WHERE id = ?",
 				Boolean.class, ana)).isTrue();
 		String anaBearer = testUsers.bearer(ANA_LOGIN, ANA_PASSWORD);
@@ -278,9 +278,9 @@ class SecurityScenarioTest {
 
 	@Test
 	@DisplayName("Scenario: USER em rota de ADMIN")
-	void shouldRespondForbiddenWhenUserCallsAdminRoute() throws Exception {
+	void shouldRespondForbiddenWhenEducatorCallsCoordinatorRoute() throws Exception {
 		// given
-		testUsers.create("Ana Souza", ANA_LOGIN, ANA_PASSWORD, "USER");
+		testUsers.create("Ana Souza", ANA_LOGIN, ANA_PASSWORD, "EDUCADOR");
 		String anaBearer = testUsers.bearer(ANA_LOGIN, ANA_PASSWORD);
 
 		// when
@@ -292,13 +292,13 @@ class SecurityScenarioTest {
 
 	@Test
 	@DisplayName("Scenario: Rebaixamento vale no mesmo token")
-	void shouldRespondForbiddenWithSameTokenWhenAdminIsDemoted() throws Exception {
+	void shouldRespondForbiddenWithSameTokenWhenCoordinatorIsDemoted() throws Exception {
 		// given
-		testUsers.create("Administrador", ADMIN_LOGIN, ADMIN_PASSWORD, "ADMIN");
-		UUID bruno = testUsers.create("Bruno Lima", BRUNO_LOGIN, BRUNO_PASSWORD, "ADMIN");
+		testUsers.create("Administrador", ADMIN_LOGIN, ADMIN_PASSWORD, "COORDENADOR");
+		UUID bruno = testUsers.create("Bruno Lima", BRUNO_LOGIN, BRUNO_PASSWORD, "COORDENADOR");
 		String brunoBearer = testUsers.bearer(BRUNO_LOGIN, BRUNO_PASSWORD);
 		String adminBearer = testUsers.bearer(ADMIN_LOGIN, ADMIN_PASSWORD);
-		changeRole(adminBearer, bruno, "Bruno Lima", BRUNO_LOGIN, "USER");
+		changeRole(adminBearer, bruno, "Bruno Lima", BRUNO_LOGIN, "EDUCADOR");
 
 		// when
 		ResultActions result = mockMvc.perform(get(USERS).header(HttpHeaders.AUTHORIZATION, brunoBearer));
@@ -311,11 +311,11 @@ class SecurityScenarioTest {
 	@DisplayName("Scenario: Promoção vale no mesmo token")
 	void shouldRespondOkWithSameTokenWhenUserIsPromoted() throws Exception {
 		// given
-		testUsers.create("Administrador", ADMIN_LOGIN, ADMIN_PASSWORD, "ADMIN");
-		UUID ana = testUsers.create("Ana Souza", ANA_LOGIN, ANA_PASSWORD, "USER");
+		testUsers.create("Administrador", ADMIN_LOGIN, ADMIN_PASSWORD, "COORDENADOR");
+		UUID ana = testUsers.create("Ana Souza", ANA_LOGIN, ANA_PASSWORD, "EDUCADOR");
 		String anaBearer = testUsers.bearer(ANA_LOGIN, ANA_PASSWORD);
 		String adminBearer = testUsers.bearer(ADMIN_LOGIN, ADMIN_PASSWORD);
-		changeRole(adminBearer, ana, "Ana Souza", ANA_LOGIN, "ADMIN");
+		changeRole(adminBearer, ana, "Ana Souza", ANA_LOGIN, "COORDENADOR");
 
 		// when
 		ResultActions result = mockMvc.perform(get(USERS).header(HttpHeaders.AUTHORIZATION, anaBearer));
@@ -352,9 +352,9 @@ class SecurityScenarioTest {
 
 	@Test
 	@DisplayName("Scenario: Header Location exposto")
-	void shouldExposeLocationHeaderWhenAdminCreatesUserFromAllowedOrigin() throws Exception {
+	void shouldExposeLocationHeaderWhenCoordinatorCreatesUserFromAllowedOrigin() throws Exception {
 		// given
-		testUsers.create("Administrador", ADMIN_LOGIN, ADMIN_PASSWORD, "ADMIN");
+		testUsers.create("Administrador", ADMIN_LOGIN, ADMIN_PASSWORD, "COORDENADOR");
 		String adminBearer = testUsers.bearer(ADMIN_LOGIN, ADMIN_PASSWORD);
 
 		// when
@@ -386,9 +386,9 @@ class SecurityScenarioTest {
 
 	@Test
 	@DisplayName("Scenario: Health com token também não mostra detalhes")
-	void shouldRespondOnlyStatusWhenHealthHasAdminToken() throws Exception {
+	void shouldRespondOnlyStatusWhenHealthHasCoordinatorToken() throws Exception {
 		// given
-		testUsers.create("Administrador", ADMIN_LOGIN, ADMIN_PASSWORD, "ADMIN");
+		testUsers.create("Administrador", ADMIN_LOGIN, ADMIN_PASSWORD, "COORDENADOR");
 		String adminBearer = testUsers.bearer(ADMIN_LOGIN, ADMIN_PASSWORD);
 
 		// when
@@ -414,9 +414,9 @@ class SecurityScenarioTest {
 
 	@Test
 	@DisplayName("Scenario: Endpoint do Actuator não exposto, com token de ADMIN")
-	void shouldRespondNotFoundWhenAdminRequestsUnexposedActuatorEndpoint() throws Exception {
+	void shouldRespondNotFoundWhenCoordinatorRequestsUnexposedActuatorEndpoint() throws Exception {
 		// given
-		testUsers.create("Administrador", ADMIN_LOGIN, ADMIN_PASSWORD, "ADMIN");
+		testUsers.create("Administrador", ADMIN_LOGIN, ADMIN_PASSWORD, "COORDENADOR");
 		String adminBearer = testUsers.bearer(ADMIN_LOGIN, ADMIN_PASSWORD);
 
 		// when
@@ -441,9 +441,9 @@ class SecurityScenarioTest {
 
 	@Test
 	@DisplayName("Scenario: Componente do health não exposto")
-	void shouldRespondNotFoundWhenAdminRequestsHealthComponent() throws Exception {
+	void shouldRespondNotFoundWhenCoordinatorRequestsHealthComponent() throws Exception {
 		// given
-		testUsers.create("Administrador", ADMIN_LOGIN, ADMIN_PASSWORD, "ADMIN");
+		testUsers.create("Administrador", ADMIN_LOGIN, ADMIN_PASSWORD, "COORDENADOR");
 		String adminBearer = testUsers.bearer(ADMIN_LOGIN, ADMIN_PASSWORD);
 
 		// when

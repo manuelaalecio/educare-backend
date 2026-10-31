@@ -17,22 +17,22 @@ class UserTest {
 	@Test
 	void shouldNormalizeNameAndLoginWhenCreated() {
 		// when
-		var user = new User("  Ana Souza  ", "Ana.Souza@Educare.org", HASH, Role.ADMIN);
+		var user = new User("  Ana Souza  ", "Ana.Souza@Educare.org", HASH, Role.COORDENADOR);
 
 		// then
 		assertThat(user.getName()).isEqualTo("Ana Souza");
 		assertThat(user.getLogin()).isEqualTo("ana.souza@educare.org");
 		assertThat(user.getPasswordHash()).isEqualTo(HASH);
-		assertThat(user.getRole()).isEqualTo(Role.ADMIN);
+		assertThat(user.getRole()).isEqualTo(Role.COORDENADOR);
 	}
 
 	@Test
-	void shouldUseUserRoleWhenCreatedWithoutRole() {
+	void shouldUseEducatorRoleWhenCreatedWithoutRole() {
 		// when
 		var user = new User("Ana Souza", "ana.souza@educare.org", HASH);
 
 		// then
-		assertThat(user.getRole()).isEqualTo(Role.USER);
+		assertThat(user.getRole()).isEqualTo(Role.EDUCADOR);
 	}
 
 	@ParameterizedTest
@@ -152,10 +152,10 @@ class UserTest {
 		var user = new User("Ana Souza", "ana.souza@educare.org", HASH);
 
 		// when
-		user.changeRole(Role.ADMIN);
+		user.changeRole(Role.COORDENADOR);
 
 		// then
-		assertThat(user.getRole()).isEqualTo(Role.ADMIN);
+		assertThat(user.getRole()).isEqualTo(Role.COORDENADOR);
 	}
 
 	@Test

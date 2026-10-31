@@ -271,7 +271,7 @@ class AuthScenarioTest {
 				.andExpect(jsonPath("$.id").value(anaId.toString()))
 				.andExpect(jsonPath("$.name").value(ANA_NAME))
 				.andExpect(jsonPath("$.login").value(ANA_LOGIN))
-				.andExpect(jsonPath("$.role").value("USER"))
+				.andExpect(jsonPath("$.role").value("EDUCADOR"))
 				.andExpect(jsonPath("$.createdAt").value("2026-03-01T10:00:00Z"))
 				.andExpect(jsonPath("$.updatedAt").value("2026-03-01T10:00:00Z"))
 				.andExpect(jsonPath("$.password").doesNotExist())
@@ -521,7 +521,7 @@ class AuthScenarioTest {
 	void shouldAcceptPasswordChangeOfAnotherUserWhenOneUserIsBlocked() throws Exception {
 		// given
 		createAna();
-		testUsers.create("Bruno Lima", "bruno.lima@educare.org", "senhaBruno1", "USER");
+		testUsers.create("Bruno Lima", "bruno.lima@educare.org", "senhaBruno1", "EDUCADOR");
 		String anaBearer = testUsers.bearer(ANA_LOGIN, ANA_PASSWORD);
 		String brunoBearer = testUsers.bearer("bruno.lima@educare.org", "senhaBruno1");
 		failCurrentPasswordEveryMinute(anaBearer, 0, 5);
@@ -561,7 +561,7 @@ class AuthScenarioTest {
 	// ---------- helpers ----------
 
 	private UUID createAna() {
-		return testUsers.create(ANA_NAME, ANA_LOGIN, ANA_PASSWORD, "USER");
+		return testUsers.create(ANA_NAME, ANA_LOGIN, ANA_PASSWORD, "EDUCADOR");
 	}
 
 	private ResultActions login(String body) throws Exception {

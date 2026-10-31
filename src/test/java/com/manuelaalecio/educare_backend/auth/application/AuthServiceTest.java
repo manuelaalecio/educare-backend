@@ -29,7 +29,7 @@ class AuthServiceTest {
 	private static final UUID ID = UUID.fromString("0190b6f0-0000-7000-8000-000000000001");
 	private static final String LOGIN = "ana.souza@educare.org";
 	private static final String PASSWORD = "s3nh@Forte";
-	private static final UserAccount ACCOUNT = new UserAccount(ID, "Ana Souza", LOGIN, "USER",
+	private static final UserAccount ACCOUNT = new UserAccount(ID, "Ana Souza", LOGIN, "EDUCADOR",
 		Instant.parse("2026-03-01T10:00:00Z"), Instant.parse("2026-03-02T09:00:00Z"));
 
 	@Mock

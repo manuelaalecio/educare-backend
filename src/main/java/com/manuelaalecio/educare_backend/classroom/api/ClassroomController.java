@@ -34,7 +34,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 @RestController
 @RequestMapping(ClassroomController.BASE_PATH)
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("hasRole('COORDENADOR')")
 @ForbiddenResponse
 public class ClassroomController {
 

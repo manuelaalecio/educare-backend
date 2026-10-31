@@ -93,7 +93,7 @@ class SecurityConfigurationTest {
 	@Test
 	void shouldRespondUnauthorizedWhenTokenIsSignedWithAnotherKey() throws Exception {
 		// given
-		givenUser(ADMIN_ID, "ADMIN");
+		givenUser(ADMIN_ID, "COORDENADOR");
 
 		// when
 		ResultActions result = mockMvc.perform(get(PROTECTED_PATH)
@@ -106,7 +106,7 @@ class SecurityConfigurationTest {
 	@Test
 	void shouldRespondUnauthorizedWhenTokenIsExpired() throws Exception {
 		// given
-		givenUser(ADMIN_ID, "ADMIN");
+		givenUser(ADMIN_ID, "COORDENADOR");
 		String authorization = accessTokens.bearer(ADMIN_ID);
 		clock.setInstant(clock.instant().plus(Duration.ofHours(8).plusSeconds(1)));
 
@@ -133,7 +133,7 @@ class SecurityConfigurationTest {
 	@Test
 	void shouldAuthenticateUserOfTokenWhenTokenIsValid() throws Exception {
 		// given
-		givenUser(USER_ID, "USER");
+		givenUser(USER_ID, "EDUCADOR");
 
 		// when
 		ResultActions result = mockMvc.perform(get(PROTECTED_PATH)
@@ -156,7 +156,7 @@ class SecurityConfigurationTest {
 	@Test
 	void shouldRespondNotFoundWhenRouteDoesNotExistAndUserIsAuthenticated() throws Exception {
 		// given
-		givenUser(USER_ID, "USER");
+		givenUser(USER_ID, "EDUCADOR");
 
 		// when
 		ResultActions result = mockMvc.perform(get("/api/v1/nao-existe")
@@ -202,7 +202,7 @@ class SecurityConfigurationTest {
 	@Test
 	void shouldRespondForbiddenProblemWhenRoleIsInsufficient() throws Exception {
 		// given
-		givenUser(USER_ID, "USER");
+		givenUser(USER_ID, "EDUCADOR");
 
 		// when
 		ResultActions result = mockMvc.perform(get("/api/v1/test-resources/admin")
@@ -221,7 +221,7 @@ class SecurityConfigurationTest {
 	@Test
 	void shouldAllowAccessWhenRoleIsSufficient() throws Exception {
 		// given
-		givenUser(ADMIN_ID, "ADMIN");
+		givenUser(ADMIN_ID, "COORDENADOR");
 
 		// when
 		ResultActions result = mockMvc.perform(get("/api/v1/test-resources/admin")
@@ -261,7 +261,7 @@ class SecurityConfigurationTest {
 	@Test
 	void shouldExposeLocationHeaderWhenCorsRequestCreatesResource() throws Exception {
 		// given
-		givenUser(ADMIN_ID, "ADMIN");
+		givenUser(ADMIN_ID, "COORDENADOR");
 
 		// when
 		ResultActions result = mockMvc.perform(post("/api/v1/test-resources")

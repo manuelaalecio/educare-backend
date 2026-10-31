@@ -5,7 +5,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import com.manuelaalecio.educare_backend.user.domain.InvalidCurrentPasswordException;
-import com.manuelaalecio.educare_backend.user.domain.LastAdminException;
+import com.manuelaalecio.educare_backend.user.domain.LastCoordinatorException;
 import com.manuelaalecio.educare_backend.user.domain.LoginAlreadyInUseException;
 import com.manuelaalecio.educare_backend.user.domain.NewPasswordSameAsCurrentException;
 import com.manuelaalecio.educare_backend.user.domain.NewPasswordSameAsLoginException;
@@ -42,7 +42,7 @@ public class UserService {
 	private final PasswordAttemptLimiter passwordAttemptLimiter;
 
 	/**
-	 * @param role {@code null} creates the user with the default role ({@link Role#USER})
+	 * @param role {@code null} creates the user with the default role ({@link Role#EDUCADOR})
 	 */
 	public User create(String name, String login, String password, Role role) {
 		String passwordHash = passwordEncoder.encode(password);
@@ -66,15 +66,15 @@ public class UserService {
 	}
 
 	/**
-	 * @param actorId the ADMIN who makes the change
+	 * @param actorId the COORDENADOR who makes the change
 	 */
 	public User update(UUID id, String name, String login, Role role, UUID actorId) {
 		User user = findById(id);
 		if (userRepository.existsByLoginAndIdNot(User.normalizeLogin(login), id)) {
 			throw new LoginAlreadyInUseException();
 		}
-		if (role != Role.ADMIN) {
-			ensureAnotherAdminRemainsWhenLosingAdmin(user);
+		if (role != Role.COORDENADOR) {
+			ensureAnotherCoordinatorRemainsWhenLosingCoordinator(user);
 		}
 		user.rename(name);
 		user.changeLogin(login);
@@ -83,7 +83,7 @@ public class UserService {
 	}
 
 	/**
-	 * Password reset by an ADMIN. Also disconnects the user: their tokens issued before now are refused.
+	 * Password reset by an COORDENADOR. Also disconnects the user: their tokens issued before now are refused.
 	 */
 	public void changePassword(UUID id, String password) {
 		User user = findById(id);
@@ -92,14 +92,14 @@ public class UserService {
 	}
 
 	/**
-	 * @param actorId the ADMIN who makes the change, who cannot delete themselves
+	 * @param actorId the COORDENADOR who makes the change, who cannot delete themselves
 	 */
 	public void delete(UUID id, UUID actorId) {
 		if (id.equals(actorId)) {
 			throw new SelfDeletionException();
 		}
 		User user = findById(id);
-		ensureAnotherAdminRemainsWhenLosingAdmin(user);
+		ensureAnotherCoordinatorRemainsWhenLosingCoordinator(user);
 		userRepository.delete(user);
 	}
 
@@ -149,12 +149,12 @@ public class UserService {
 	}
 
 	/**
-	 * Called when the user is about to stop being ADMIN (demotion or deletion). Locks the ADMIN rows, so two
+	 * Called when the user is about to stop being COORDENADOR (demotion or deletion). Locks the COORDENADOR rows, so two
 	 * concurrent demotions are serialized and the second one no longer counts the first demoted user.
 	 */
-	private void ensureAnotherAdminRemainsWhenLosingAdmin(User user) {
-		if (user.getRole() == Role.ADMIN && userRepository.findAllByRoleForUpdate(Role.ADMIN).size() < 2) {
-			throw new LastAdminException();
+	private void ensureAnotherCoordinatorRemainsWhenLosingCoordinator(User user) {
+		if (user.getRole() == Role.COORDENADOR && userRepository.findAllByRoleForUpdate(Role.COORDENADOR).size() < 2) {
+			throw new LastCoordinatorException();
 		}
 	}
 

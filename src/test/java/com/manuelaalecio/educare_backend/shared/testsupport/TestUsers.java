@@ -21,7 +21,7 @@ import tools.jackson.databind.json.JsonMapper;
  * ({@code @SpringBootTest} with {@code @AutoConfigureMockMvc}). Import it with {@code @Import(TestUsers.class)}:
  *
  * <pre>
- * UUID zelia = testUsers.create("Zélia", "zelia@educare.org", "segredo123", "ADMIN");
+ * UUID zelia = testUsers.create("Zélia", "zelia@educare.org", "segredo123", "COORDENADOR");
  * String bearer = testUsers.bearer("zelia@educare.org", "segredo123");
  * mockMvc.perform(get("/api/v1/users").header(HttpHeaders.AUTHORIZATION, bearer));
  * </pre>
@@ -49,7 +49,7 @@ public class TestUsers {
 	/**
 	 * Inserts a user with the password hashed by the application encoder and the audit dates from the clock.
 	 *
-	 * @param role {@code ADMIN} or {@code USER}
+	 * @param role {@code COORDENADOR} or {@code EDUCADOR}
 	 * @return the id of the new user
 	 */
 	public UUID create(String name, String login, String password, String role) {

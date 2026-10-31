@@ -8,7 +8,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 /**
- * Body of {@code POST /api/v1/users}. The role is optional: when absent, the user is created as {@code USER}.
+ * Body of {@code POST /api/v1/users}. The role is optional: when absent, the user is created as {@code EDUCADOR}.
  */
 public record CreateUserRequest(
 
@@ -26,6 +26,6 @@ public record CreateUserRequest(
 		@MaxUtf8Bytes(72)
 		String password,
 
-		@Pattern(regexp = "ADMIN|USER", message = "deve ser ADMIN ou USER")
+		@Pattern(regexp = "COORDENADOR|EDUCADOR", message = "deve ser COORDENADOR ou EDUCADOR")
 		String role) {
 }
