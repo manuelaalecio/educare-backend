@@ -24,7 +24,6 @@ educare:
   security:
     jwt:
       expiration: 8h
-# Actuator: só o health é exposto na web, respondendo só o status agregado (spec security).
 management:
   endpoints:
     web:
@@ -34,10 +33,6 @@ management:
     health:
       show-details: never
       show-components: never
-# Documentação da API (OpenAPI e Swagger UI) desligada por padrão; só o dev liga.
-# O documento gerado é o contrato versionado em openapi/educare-api.json (spec api-contract): ordem estável
-# das chaves, só as respostas declaradas em cada operação (sem as inferidas do @RestControllerAdvice) e
-# application/json nas respostas de sucesso, em vez de */* (os mappings não declaram produces).
 springdoc:
   api-docs:
     enabled: false
