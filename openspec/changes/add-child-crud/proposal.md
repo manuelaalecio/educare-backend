@@ -23,7 +23,7 @@ O cadastro das crianças atendidas é o centro do Educare: responsáveis, matrí
   - `race` (`WHITE`, `BLACK`, `BROWN`, `YELLOW`, `INDIGENOUS`, pelas categorias do IBGE), `gender` (`MALE`, `FEMALE`, `OTHER`) e `maritalStatus` (`SINGLE`, `MARRIED`, `STABLE_UNION`, `DIVORCED`, `WIDOWED`) só aceitam esses valores; o frontend traduz para exibir;
   - `cpf` aceito com ou sem máscara, com dígitos verificadores válidos, gravado só com dígitos e único entre as crianças (`409 Conflict` se repetir, sem expor o CPF na resposta);
   - `rg` aceito com qualquer pontuação, gravado só com letras e dígitos em maiúsculas (`12.345.678-x` → `12345678X`) e único entre as crianças (`409 Conflict` se repetir, sem expor o RG na resposta).
-- Acesso: qualquer usuário autenticado (`ADMIN` ou `USER`) cria, consulta, lista e altera crianças; só `ADMIN` exclui.
+- Acesso: qualquer usuário autenticado (`COORDENADOR` ou `EDUCADOR`) cria, consulta, lista e altera crianças; só `COORDENADOR` exclui.
 - Autoria: cada criança guarda quem a criou e quem a alterou por último, sem expor isso na API.
 - A listagem devolve só um resumo de cada criança (sem dados de saúde, documentos etc.); os dados completos saem só na consulta por id, na criação e na alteração (minimização, LGPD).
 - Erros de desserialização ligados a um campo (data em formato inválido, tipo errado) passam a responder `400` com uma entrada em `errors` para o campo, em toda a API; JSON sintaticamente quebrado continua com `400` sem `errors`.
@@ -44,7 +44,7 @@ O cadastro das crianças atendidas é o centro do Educare: responsáveis, matrí
 ## Capabilities
 
 ### New Capabilities
-- `child`: cadastro (CRUD) das crianças atendidas pela instituição, com dados pessoais, endereço e dados de saúde, validação de CPF, RG, CEP e UF, listas fixas para raça, gênero e estado civil, busca por nome, autoria dos registros e exclusão restrita a `ADMIN`. É o módulo de negócio `child` (pacote `com.manuelaalecio.educare_backend.child`); não depende de outros módulos de negócio.
+- `child`: cadastro (CRUD) das crianças atendidas pela instituição, com dados pessoais, endereço e dados de saúde, validação de CPF, RG, CEP e UF, listas fixas para raça, gênero e estado civil, busca por nome, autoria dos registros e exclusão restrita a `COORDENADOR`. É o módulo de negócio `child` (pacote `com.manuelaalecio.educare_backend.child`); não depende de outros módulos de negócio.
 
 ### Modified Capabilities
 <!-- Nenhuma: `security` (token obrigatório, 401/403 em ProblemDetail) e `persistence` (BaseEntity, migrations, autoria vinda de add-record-authorship) são usadas como estão. A mudança no GlobalExceptionHandler só acrescenta `errors` a respostas 400 já existentes e não contradiz nenhum requirement de `user`. -->

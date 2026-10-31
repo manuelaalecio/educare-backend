@@ -244,7 +244,7 @@ O sistema SHALL substituir todos os dados da criança pelos recebidos em `PUT /a
 O sistema SHALL excluir definitivamente a criança em `DELETE /api/v1/children/{id}`, respondendo `204 No Content`; depois disso, a criança não aparece na consulta nem na listagem, e o CPF e o RG dela ficam livres para outra criança. Se não existir criança com esse id, SHALL responder `404 Not Found`.
 
 #### Scenario: Criança excluída
-- **WHEN** existe a criança `Maria Clara Souza` e um `ADMIN` envia `DELETE /api/v1/children/{id}` com o id dela
+- **WHEN** existe a criança `Maria Clara Souza` e um `COORDENADOR` envia `DELETE /api/v1/children/{id}` com o id dela
 - **THEN** a resposta é `204 No Content`, `GET /api/v1/children/{id}` passa a responder `404 Not Found` e a listagem não contém mais essa criança
 
 #### Scenario: CPF liberado após exclusão
@@ -252,7 +252,7 @@ O sistema SHALL excluir definitivamente a criança em `DELETE /api/v1/children/{
 - **THEN** a criação responde `201 Created`
 
 #### Scenario: Exclusão de criança inexistente
-- **WHEN** um `ADMIN` envia `DELETE /api/v1/children/{id}` com um id que não existe
+- **WHEN** um `COORDENADOR` envia `DELETE /api/v1/children/{id}` com um id que não existe
 - **THEN** a resposta é `404 Not Found` com `Content-Type: application/problem+json`
 
 ### Requirement: Corpo de requisição ilegível
@@ -270,7 +270,7 @@ O sistema SHALL recusar com `400 Bad Request` e um `ProblemDetail`, sem gravar n
 O sistema SHALL registrar, em cada criança, o usuário autenticado que a criou e o usuário autenticado que a alterou por último. Na criação, os dois SHALL ser o usuário que fez a requisição; na alteração, só o autor da última alteração SHALL mudar. Uma requisição recusada (`400`, `401`, `403`, `404` ou `409`) SHALL NOT alterar esses registros. A autoria SHALL NOT aparecer nas respostas da API desta capability.
 
 #### Scenario: Autoria na criação e na alteração
-- **WHEN** a usuária `ana.souza@educare.org`, com role `USER`, cria a criança `Maria Clara Souza`, e depois o usuário `bruno.lima@educare.org`, com role `USER`, a altera com dados válidos
+- **WHEN** a usuária `ana.souza@educare.org`, com role `EDUCADOR`, cria a criança `Maria Clara Souza`, e depois o usuário `bruno.lima@educare.org`, com role `EDUCADOR`, a altera com dados válidos
 - **THEN** a criança fica registrada como criada por `ana.souza@educare.org` e alterada por último por `bruno.lima@educare.org`
 
 #### Scenario: Alteração recusada não muda a autoria
@@ -282,14 +282,14 @@ O sistema SHALL registrar, em cada criança, o usuário autenticado que a criou 
 - **THEN** nenhuma das três respostas contém propriedades com o autor da criação ou da alteração
 
 ### Requirement: Acesso ao cadastro de crianças
-Todos os endpoints de `/api/v1/children` SHALL exigir um usuário autenticado; sem token válido, SHALL responder `401 Unauthorized`. Usuários com role `ADMIN` ou `USER` SHALL poder criar, consultar, listar e alterar crianças. Só usuários com role `ADMIN` SHALL poder excluir; um `USER` que tenta excluir SHALL receber `403 Forbidden`. As recusas por `401` e `403` SHALL ter um `ProblemDetail` e não executar a operação. Nos demais requirements desta capability, "um cliente" é um usuário autenticado com role `ADMIN` ou `USER`.
+Todos os endpoints de `/api/v1/children` SHALL exigir um usuário autenticado; sem token válido, SHALL responder `401 Unauthorized`. Usuários com role `COORDENADOR` ou `EDUCADOR` SHALL poder criar, consultar, listar e alterar crianças. Só usuários com role `COORDENADOR` SHALL poder excluir; um `EDUCADOR` que tenta excluir SHALL receber `403 Forbidden`. As recusas por `401` e `403` SHALL ter um `ProblemDetail` e não executar a operação. Nos demais requirements desta capability, "um cliente" é um usuário autenticado com role `COORDENADOR` ou `EDUCADOR`.
 
-#### Scenario: USER cria e altera criança
-- **WHEN** a usuária `ana.souza@educare.org`, com role `USER`, cria uma criança com dados válidos e depois a altera, com o token dela
+#### Scenario: EDUCADOR cria e altera criança
+- **WHEN** a usuária `ana.souza@educare.org`, com role `EDUCADOR`, cria uma criança com dados válidos e depois a altera, com o token dela
 - **THEN** a criação responde `201 Created` e a alteração responde `200 OK`
 
-#### Scenario: USER não exclui criança
-- **WHEN** existe a criança `Maria Clara Souza` e a usuária `ana.souza@educare.org`, com role `USER`, envia `DELETE /api/v1/children/{id}` com o id dela e o token dela
+#### Scenario: EDUCADOR não exclui criança
+- **WHEN** existe a criança `Maria Clara Souza` e a usuária `ana.souza@educare.org`, com role `EDUCADOR`, envia `DELETE /api/v1/children/{id}` com o id dela e o token dela
 - **THEN** a resposta é `403 Forbidden` com `Content-Type: application/problem+json`, e a criança continua existindo
 
 #### Scenario: Listagem sem token
