@@ -5,10 +5,10 @@ import java.util.UUID;
 
 /**
  * Finds the current state of the user of a token. Implemented by the module that owns the users, so
- * {@code shared} does not depend on it.
+ * {@code shared} does not depend on it. Called on every authenticated request, so it must read the user only once.
  */
 public interface AuthenticatedUserLookup {
 
-	Optional<AuthenticatedUser> findById(UUID id);
+	Optional<TokenOwner> findById(UUID id);
 
 }

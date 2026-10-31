@@ -11,8 +11,9 @@ import org.springframework.stereotype.Component;
 
 /**
  * Turns a validated token into the {@link AuthenticatedUserAuthentication} of its user, with the role read now from
- * the {@link AuthenticatedUserLookup}. A subject that is not a user id, or a user that no longer exists, rejects the
- * token with a generic message, so the response does not tell why.
+ * the {@link AuthenticatedUserLookup}. A subject that is not a user id, a user that no longer exists, or a token
+ * issued before the user's last password change rejects the token with a generic message, so the response does not
+ * tell why.
  */
 @Component
 @RequiredArgsConstructor
@@ -26,7 +27,8 @@ public class AuthenticatedUserConverter implements Converter<Jwt, AbstractAuthen
 	public AbstractAuthenticationToken convert(Jwt jwt) {
 		UUID userId = parseUserId(jwt.getSubject());
 		return lookup.findById(userId)
-			.map(AuthenticatedUserAuthentication::new)
+			.filter(owner -> owner.accepts(jwt.getIssuedAt()))
+			.map(owner -> new AuthenticatedUserAuthentication(owner.user()))
 			.orElseThrow(() -> new InvalidBearerTokenException(INVALID_TOKEN));
 	}
 

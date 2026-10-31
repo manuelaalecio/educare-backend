@@ -276,7 +276,7 @@ class SecurityConfigurationTest {
 	}
 
 	private void givenUser(UUID id, String role) {
-		given(lookup.findById(id)).willReturn(Optional.of(new AuthenticatedUser(id, role)));
+		given(lookup.findById(id)).willReturn(Optional.of(new TokenOwner(new AuthenticatedUser(id, role), null)));
 	}
 
 	private static MockHttpServletRequestBuilder preflight(String origin) {

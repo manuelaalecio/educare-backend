@@ -144,7 +144,7 @@ class AuthorshipScenarioTest {
 		// when
 		perform(anaBearer, json(put("/api/v1/auth/me/password"), """
 				{"currentPassword": "segredo123", "newPassword": "novaSenha456"}"""))
-				.andExpect(status().isNoContent());
+				.andExpect(status().isOk());
 
 		// then
 		assertThat(createdBy(anaId)).isEqualTo(adminId);

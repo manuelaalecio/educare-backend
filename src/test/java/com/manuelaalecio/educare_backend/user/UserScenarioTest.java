@@ -45,6 +45,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 class UserScenarioTest {
 
 	private static final String USERS = "/api/v1/users";
+	private static final String ME = "/api/v1/auth/me";
 	private static final String PROBLEM_JSON = "application/problem+json";
 	private static final Instant CREATED_AT = Instant.parse("2026-03-01T10:00:00Z");
 	private static final Instant UPDATED_AT = Instant.parse("2026-03-02T09:00:00Z");
@@ -592,18 +593,64 @@ class UserScenarioTest {
 	}
 
 	@Test
+	@DisplayName("Scenario: Redefinição desconecta o usuário afetado")
+	void shouldDisconnectOnlyAffectedUserWhenAdminResetsPassword() throws Exception {
+		// given
+		UUID anaId = createAna();
+		clock.setInstant(Instant.parse("2026-03-01T10:00:00Z"));
+		String anaBearer = testUsers.bearer(ANA_LOGIN, PASSWORD);
+
+		// when
+		clock.setInstant(Instant.parse("2026-03-01T10:30:00Z"));
+		putPassword(anaId, """
+				{"password": "novaSenha456"}""").andExpect(status().isNoContent());
+
+		// then
+		clock.setInstant(Instant.parse("2026-03-01T10:31:00Z"));
+		mockMvc.perform(get(ME).header(HttpHeaders.AUTHORIZATION, anaBearer))
+				.andExpect(status().isUnauthorized());
+		performAsZelia(get(USERS)).andExpect(status().isOk());
+		String newAnaBearer = testUsers.bearer(ANA_LOGIN, "novaSenha456");
+		mockMvc.perform(get(ME).header(HttpHeaders.AUTHORIZATION, newAnaBearer))
+				.andExpect(status().isOk());
+	}
+
+	@Test
+	@DisplayName("Scenario: ADMIN que redefine a própria senha é desconectado")
+	void shouldDisconnectAdminWhenAdminResetsOwnPassword() throws Exception {
+		// given
+		clock.setInstant(Instant.parse("2026-03-01T10:00:00Z"));
+		String adminBearer = testUsers.bearer(ZELIA_LOGIN, PASSWORD);
+
+		// when
+		clock.setInstant(Instant.parse("2026-03-01T10:30:00Z"));
+		ResultActions result = mockMvc.perform(json(put(USERS + "/{id}/password", zeliaId), """
+				{"password": "novaSenha456"}""").header(HttpHeaders.AUTHORIZATION, adminBearer));
+
+		// then
+		result.andExpect(status().isNoContent());
+		clock.setInstant(Instant.parse("2026-03-01T10:31:00Z"));
+		mockMvc.perform(get(USERS).header(HttpHeaders.AUTHORIZATION, adminBearer))
+				.andExpect(status().isUnauthorized());
+	}
+
+	@Test
 	@DisplayName("Scenario: Nova senha inválida")
 	void shouldRejectPasswordChangeWhenNewPasswordIsInvalid() throws Exception {
 		// given
 		UUID id = createAna();
+		String anaBearer = testUsers.bearer(ANA_LOGIN, PASSWORD);
 
 		// when
+		clock.setInstant(CREATED_AT.plusSeconds(60));
 		ResultActions result = putPassword(id, """
 				{"password": "curta"}""");
 
 		// then
 		assertValidationError(result, "password");
 		assertThat(passwordEncoder.matches("segredo123", passwordHashInDatabase(id))).isTrue();
+		mockMvc.perform(get(ME).header(HttpHeaders.AUTHORIZATION, anaBearer))
+				.andExpect(status().isOk());
 	}
 
 	@Test

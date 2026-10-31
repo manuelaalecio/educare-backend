@@ -419,8 +419,15 @@
           "required" : true
         },
         "responses" : {
-          "204" : {
-            "description" : "No Content"
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AccessTokenResponse"
+                }
+              }
+            },
+            "description" : "OK"
           },
           "400" : {
             "content" : {
@@ -441,6 +448,16 @@
               }
             },
             "description" : "Unauthorized"
+          },
+          "429" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Too Many Requests"
           }
         },
         "tags" : [

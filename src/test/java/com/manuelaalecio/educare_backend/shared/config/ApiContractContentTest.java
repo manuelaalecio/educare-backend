@@ -57,8 +57,24 @@ class ApiContractContentTest {
 		assertThat(properties(schema)).doesNotContainKey("password");
 	}
 
+	@Test
+	@DisplayName("Scenario: Resposta da troca da própria senha")
+	void shouldDeclareLoginTokenSchemaWithoutNoContentWhenReadingOwnPasswordChange() {
+		// when
+		Map<String, Object> schema = successSchema("/api/v1/auth/me/password", "put", "200");
+		String ref = contract.read("$.paths['/api/v1/auth/me/password'].put.responses['200']"
+				+ ".content['application/json'].schema.$ref");
+		String loginRef = contract.read("$.paths['/api/v1/auth/login'].post.responses['200']"
+				+ ".content['application/json'].schema.$ref");
+
+		// then
+		assertThat(ref).isEqualTo(loginRef);
+		assertThat(required(schema)).contains("accessToken", "tokenType", "expiresIn");
+		assertThat(responses("/api/v1/auth/me/password", "put")).doesNotContainKey("204");
+	}
+
 	@ParameterizedTest
-	@CsvSource({"/api/v1/auth/me/password, put", "/api/v1/users/{id}/password, put", "/api/v1/users/{id}, delete"})
+	@CsvSource({"/api/v1/users/{id}/password, put", "/api/v1/users/{id}, delete"})
 	@DisplayName("Scenario: Operação sem corpo de resposta")
 	void shouldDeclareNoContentWithoutBodyWhenOperationReturnsNothing(String path, String method) {
 		// when
@@ -171,6 +187,24 @@ class ApiContractContentTest {
 	void shouldDeclareBadRequestAndNotFoundWhenOperationLooksUpUserById(String path, String method) {
 		// when / then
 		assertProblemResponses(path, method, "400", "404");
+	}
+
+	@Test
+	@DisplayName("Scenario: Erros da troca da própria senha")
+	void shouldDeclareBadRequestUnauthorizedAndTooManyRequestsWithoutForbiddenWhenReadingOwnPasswordChange() {
+		// when / then
+		assertProblemResponses("/api/v1/auth/me/password", "put", "400", "401", "429");
+		assertThat(responses("/api/v1/auth/me/password", "put")).doesNotContainKey("403");
+	}
+
+	@Test
+	@DisplayName("Scenario: Operação sem limite de tentativas não declara 429")
+	void shouldNotDeclareTooManyRequestsWhenReadingPasswordResetByAdmin() {
+		// when
+		Map<String, Object> responses = responses("/api/v1/users/{id}/password", "put");
+
+		// then
+		assertThat(responses).doesNotContainKey("429");
 	}
 
 	@Test

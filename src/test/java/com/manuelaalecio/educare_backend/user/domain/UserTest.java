@@ -3,6 +3,8 @@ package com.manuelaalecio.educare_backend.user.domain;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 
+import java.time.Instant;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
@@ -157,15 +159,54 @@ class UserTest {
 	}
 
 	@Test
-	void shouldReplaceHashWhenPasswordHashChanges() {
+	void shouldHaveNoPasswordChangeWhenUserIsNew() {
+		// when
+		var user = new User("Ana Souza", "ana.souza@educare.org", HASH);
+
+		// then
+		assertThat(user.getPasswordChangedAt()).isNull();
+	}
+
+	@Test
+	void shouldReplaceHashAndRecordInstantTruncatedToSecondsWhenPasswordChanges() {
 		// given
 		var user = new User("Ana Souza", "ana.souza@educare.org", HASH);
 
 		// when
-		user.changePasswordHash("$2a$10$other");
+		user.changePassword("$2a$10$other", Instant.parse("2026-03-01T10:00:00.900Z"));
 
 		// then
 		assertThat(user.getPasswordHash()).isEqualTo("$2a$10$other");
+		assertThat(user.getPasswordChangedAt()).isEqualTo(Instant.parse("2026-03-01T10:00:00Z"));
+	}
+
+	@ParameterizedTest
+	@NullAndEmptySource
+	@ValueSource(strings = "   ")
+	void shouldRejectPasswordChangeAndKeepStateWhenNewHashIsBlank(String hash) {
+		// given
+		var user = new User("Ana Souza", "ana.souza@educare.org", HASH);
+		var changedAt = Instant.parse("2026-03-01T10:00:00Z");
+
+		// when / then
+		assertThatIllegalArgumentException()
+				.isThrownBy(() -> user.changePassword(hash, changedAt))
+				.withMessage("Hash da senha é obrigatório");
+		assertThat(user.getPasswordHash()).isEqualTo(HASH);
+		assertThat(user.getPasswordChangedAt()).isNull();
+	}
+
+	@Test
+	void shouldRejectPasswordChangeAndKeepStateWhenInstantIsNull() {
+		// given
+		var user = new User("Ana Souza", "ana.souza@educare.org", HASH);
+
+		// when / then
+		assertThatIllegalArgumentException()
+				.isThrownBy(() -> user.changePassword("$2a$10$other", null))
+				.withMessage("Instante da troca de senha é obrigatório");
+		assertThat(user.getPasswordHash()).isEqualTo(HASH);
+		assertThat(user.getPasswordChangedAt()).isNull();
 	}
 
 	@Test

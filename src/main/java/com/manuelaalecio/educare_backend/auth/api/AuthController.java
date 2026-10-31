@@ -7,6 +7,7 @@ import com.manuelaalecio.educare_backend.auth.api.dto.MeResponse;
 import com.manuelaalecio.educare_backend.auth.application.AuthService;
 import com.manuelaalecio.educare_backend.shared.config.BadRequestResponse;
 import com.manuelaalecio.educare_backend.shared.config.ProblemResponses;
+import com.manuelaalecio.educare_backend.shared.config.TooManyRequestsResponse;
 import com.manuelaalecio.educare_backend.shared.security.AuthenticatedUser;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -58,12 +59,19 @@ public class AuthController {
 		return authMapper.toResponse(authService.me(user.id()));
 	}
 
+	/**
+	 * Changes the user's own password and returns a new token for the current session: every token issued before,
+	 * including the one of this request, is refused from now on.
+	 */
 	@PutMapping("/me/password")
-	@ResponseStatus(HttpStatus.NO_CONTENT)
+	// runtime no-op, so that springdoc documents the 200 next to the declared errors (see login)
+	@ResponseStatus(HttpStatus.OK)
 	@BadRequestResponse
-	public void changeOwnPassword(@AuthenticationPrincipal AuthenticatedUser user,
+	@TooManyRequestsResponse
+	public AccessTokenResponse changeOwnPassword(@AuthenticationPrincipal AuthenticatedUser user,
 			@Valid @RequestBody ChangeOwnPasswordRequest request) {
-		authService.changeOwnPassword(user.id(), request.currentPassword(), request.newPassword());
+		return authMapper.toResponse(
+				authService.changeOwnPassword(user.id(), request.currentPassword(), request.newPassword()));
 	}
 
 }

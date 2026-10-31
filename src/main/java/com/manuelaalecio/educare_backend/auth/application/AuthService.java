@@ -31,8 +31,13 @@ public class AuthService {
 		return userService.findAccount(userId);
 	}
 
-	public void changeOwnPassword(UUID userId, String currentPassword, String newPassword) {
+	/**
+	 * Changes the password, which refuses every token of the user issued before now, and returns a new token so the
+	 * current session goes on. The token is issued only after the change was committed by {@link UserService}.
+	 */
+	public IssuedAccessToken changeOwnPassword(UUID userId, String currentPassword, String newPassword) {
 		userService.changeOwnPassword(userId, currentPassword, newPassword);
+		return accessTokenIssuer.issue(userId);
 	}
 
 }
