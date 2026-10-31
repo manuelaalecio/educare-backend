@@ -1,0 +1,25 @@
+# Traefik do k3s na porta 80 do nó, sem host (responde pelo IP). Só a API: o Postgres nunca entra aqui.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: educare-backend
+  # Para HTTPS (change futura): descomentar com o ClusterIssuer do cert-manager.
+  # annotations:
+  #   cert-manager.io/cluster-issuer: letsencrypt
+spec:
+  ingressClassName: traefik
+  # tls:
+  #   - hosts:
+  #       - api.example.org
+  #     secretName: educare-backend-tls
+  rules:
+    - # host: api.example.org
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: educare-backend
+                port:
+                  number: 8080

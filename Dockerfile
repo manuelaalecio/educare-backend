@@ -1,6 +1,6 @@
-# Imagem de produção: linux/amd64 (VM x86_64 da Oracle), construída e publicada no
-# GHCR pelo CI (.github/workflows/ci.yml). A imagem é pública: nada de segredos aqui;
-# a configuração vem só de variáveis de ambiente em tempo de execução.
+# Imagem de produção: linux/arm64 (nó k3s Ampere da Oracle), construída num runner arm64
+# nativo e publicada no GHCR pelo CI (.github/workflows/ci.yml). A imagem é pública: nada
+# de segredos aqui; a configuração vem só de variáveis de ambiente em tempo de execução.
 
 # Etapa 1: compila o projeto com Gradle
 FROM eclipse-temurin:21-jdk AS build

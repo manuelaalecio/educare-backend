@@ -1,0 +1,24 @@
+# Argo CD Image Updater (v1.4.0, CRD ImageUpdater): leva a Application educare à maior tag
+# vX.Y.Z publicada no GHCR, gravando-a direto na Application, sem commit no repositório.
+# Aplicado uma única vez com kubectl; para fixar uma tag (rollback), ver o README.
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
+metadata:
+  name: educare
+  namespace: argocd
+spec:
+  applicationRefs:
+    - namePattern: educare
+      writeBackConfig:
+        method: argocd
+      images:
+        - alias: api
+          imageName: ghcr.io/manuelaalecio/educare-backend
+          commonUpdateSettings:
+            updateStrategy: semver
+            # Só vX.Y.Z: sem o filtro, um <sha7> só com dígitos seria lido como semver e ganharia.
+            allowTags: 'regexp:^v\d+\.\d+\.\d+$'
+          manifestTargets:
+            kustomize:
+              # Igual ao name do images: de deploy/k8s/kustomization.yaml.
+              name: ghcr.io/manuelaalecio/educare-backend

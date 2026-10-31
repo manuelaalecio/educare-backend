@@ -44,10 +44,13 @@ context: |
     gera os tipos a partir dele.
   - Hospedagem: Oracle Cloud Free Tier, com CPU e memória limitadas. Evitar componentes
     de infraestrutura extras (Redis, Kafka, etc.) sem justificativa explícita no design.
-  - Entrega: a imagem linux/amd64 é publicada no GHCR (ghcr.io/manuelaalecio/educare-backend,
-    público) pelo CI da main, e o deploy (tag v* ou workflow_dispatch, com rollback pela
-    tag da imagem) sobe na VM do backend, por SSH, o Docker Compose de deploy/ com a API
-    e o Caddy como proxy reverso. O banco fica em outra VM, acessado pelo IP privado.
+  - Entrega: a imagem linux/arm64 é publicada no GHCR (ghcr.io/manuelaalecio/educare-backend,
+    público) pelo CI (push na main com o label build, ou tag vX.Y.Z num commit da main).
+    O deploy é GitOps num k3s de nó único (VM Oracle Ampere): o Argo CD sincroniza os
+    manifests Kustomize de deploy/k8s (API, Postgres em StatefulSet no próprio cluster,
+    Ingress Traefik) e o Argo CD Image Updater leva a maior tag vX.Y.Z à Application, sem
+    commit no git. Segredos só no Secret educare-env, criado à mão. Rollback fixando a tag
+    no ImageUpdater ou pelo histórico do Argo CD. Sem SSH no pipeline.
 
   ## Stack
   - Java 21, Spring Boot 4.1.1, Gradle.
@@ -111,7 +114,8 @@ context: |
   - application.yaml com profiles dev (padrão, aponta para o banco local do Compose) e prod;
     segredos só por variáveis de ambiente, e no prod também as URLs.
   - Actuator: só o health (com os probes liveness/readiness) é exposto na web, em todos os
-    profiles, respondendo só o status, sem componentes nem detalhes. Usado pelo health check do deploy.
+    profiles, respondendo só o status, sem componentes nem detalhes. Usado pelos probes do Kubernetes
+    (readiness e liveness, sem o banco).
 
   ## Testes
   Estratégia completa (tipos de teste, cobertura, convenções e estrutura) no CLAUDE.md,
@@ -121,8 +125,10 @@ context: |
     (@SpringBootTest + Testcontainers, um teste por Scenario das specs) e ArchUnit.
   - Cobertura JaCoCo mínima de 90% de linhas e branches, verificada no build.
   - O ./gradlew build roda no CI (.github/workflows/ci.yml) em todo PR para a main e em
-    todo push na main; o check build é obrigatório para o merge. No push na main, a imagem
-    é publicada no GHCR (:<sha7> e :latest) só se o PR mergeado tiver o label build.
+    todo push na main e em tags v*; o check build é obrigatório para o merge. O job manifests
+    valida deploy/k8s e deploy/argocd. A imagem linux/arm64 é publicada no GHCR (:<sha7> e
+    :latest) no push na main só se o PR mergeado tiver o label build, e numa tag vX.Y.Z de
+    um commit da main também com :vX.Y.Z, sem exigir o label.
 
 rules:
   proposal:

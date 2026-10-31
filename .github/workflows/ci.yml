@@ -5,14 +5,16 @@ on:
     branches: [main]
   push:
     branches: [main]
+    # A `v*` tag is the release: it publishes the version image (see publish-gate).
+    tags: ['v*']
 
 permissions:
   contents: read
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
-  # On PRs a new push cancels the previous run; on main runs queue up, so every merge
-  # with the `build` label gets its image.
+  # On PRs a new push cancels the previous run; on main and on tags runs queue up, so every
+  # merge with the `build` label and every release tag gets its image.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -50,19 +52,22 @@ jobs:
             build/test-results/test/
           retention-days: 7
 
-  # Allows publishing the image only when the merged PR has the `build` label.
+  # Decides whether the image is published. On main: only when the merged PR has the
+  # `build` label. On a `v*` tag: always, as long as the tag is `vX.Y.Z` and its commit is
+  # on main (creating the tag is the explicit release act, so no label is needed).
   publish-gate:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: read
       pull-requests: read
     outputs:
-      publish: ${{ steps.gate.outputs.publish }}
+      publish: ${{ steps.gate.outputs.publish || steps.tag-gate.outputs.publish }}
     steps:
       - name: Check the build label of the merged pull request
         id: gate
+        if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
@@ -93,10 +98,86 @@ jobs:
           fi
           echo "publish=$publish ($reason)"
 
-  image:
-    needs: [build, publish-gate]
-    if: needs.publish-gate.outputs.publish == 'true'
+      - name: Checkout (full history, for the tag check)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Check the release tag
+        id: tag-gate
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          TAG: ${{ github.ref_name }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            publish=false
+            reason="a tag \`$TAG\` não segue o formato \`vX.Y.Z\`"
+          elif ! git merge-base --is-ancestor "$COMMIT_SHA" origin/main; then
+            publish=false
+            reason="o commit da tag \`$TAG\` não está na main"
+          else
+            publish=true
+            reason="tag de versão \`$TAG\` num commit da main"
+          fi
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+          if [ "$publish" = true ]; then
+            echo "Imagem será publicada: $reason." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Imagem não publicada: $reason." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "publish=$publish ($reason)"
+
+  # Validates the Kubernetes manifests (deploy/k8s, rendered by Kustomize) and the Argo CD
+  # resources (deploy/argocd) against the schemas of the cluster's Kubernetes version.
+  manifests:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install kubeconform
+        env:
+          KUBECONFORM_VERSION: v0.8.0
+        run: |
+          set -euo pipefail
+          base="https://github.com/yannh/kubeconform/releases/download/$KUBECONFORM_VERSION"
+          cd "$RUNNER_TEMP"
+          curl -fsSLO "$base/kubeconform-linux-amd64.tar.gz"
+          curl -fsSLO "$base/CHECKSUMS"
+          grep ' kubeconform-linux-amd64.tar.gz$' CHECKSUMS | sha256sum -c -
+          tar -xzf kubeconform-linux-amd64.tar.gz kubeconform
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
+      - name: Validate deploy/k8s
+        env:
+          KUBERNETES_VERSION: 1.36.0
+        run: |
+          set -euo pipefail
+          kubectl kustomize deploy/k8s \
+            | kubeconform -strict -summary -kubernetes-version "$KUBERNETES_VERSION" -schema-location default
+
+      # The CRDs-catalog schema of ImageUpdater is from before v1.2 (it still requires
+      # spec.namespace, removed in v1.2), so that kind is skipped here; image-updater.yaml
+      # was checked against the CRD of the installed version (see design D3).
+      - name: Validate deploy/argocd
+        env:
+          KUBERNETES_VERSION: 1.36.0
+          CRD_SCHEMAS: https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json
+        run: |
+          set -euo pipefail
+          kubeconform -strict -summary -kubernetes-version "$KUBERNETES_VERSION" \
+            -schema-location default -schema-location "$CRD_SCHEMAS" -skip ImageUpdater deploy/argocd/
+
+  image:
+    needs: [build, publish-gate, manifests]
+    if: needs.publish-gate.outputs.publish == 'true'
+    # Native arm64 runner: the cluster node is arm64, and building under QEMU is far slower.
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 20
     permissions:
       contents: read
@@ -122,15 +203,21 @@ jobs:
           COMMIT_SHA: ${{ github.sha }}
           SERVER_URL: ${{ github.server_url }}
           REPOSITORY: ${{ github.repository }}
+          REF: ${{ github.ref }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           image="ghcr.io/${OWNER,,}/educare-backend"
           short_sha="${COMMIT_SHA::7}"
+          tags=("$image:$short_sha" "$image:latest")
+          # On a release tag (already validated by publish-gate), also the version tag.
+          if [[ "$REF" == refs/tags/v* ]]; then
+            tags+=("$image:$REF_NAME")
+          fi
           {
             echo "short_sha=$short_sha"
             echo "tags<<EOF"
-            echo "$image:$short_sha"
-            echo "$image:latest"
+            printf '%s\n' "${tags[@]}"
             echo "EOF"
             echo "labels<<EOF"
             echo "org.opencontainers.image.source=$SERVER_URL/$REPOSITORY"
@@ -138,13 +225,16 @@ jobs:
             echo "org.opencontainers.image.licenses=MIT"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
-          echo "Imagem publicada: \`$image:$short_sha\` (e \`latest\`)." >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "Imagem publicada (linux/arm64) com as tags:"
+            printf -- "- \`%s\`\n" "${tags[@]}"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Build and push
         uses: docker/build-push-action@v7
         with:
           context: .
-          platforms: linux/amd64
+          platforms: linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

@@ -108,7 +108,7 @@ on:
 - **Novo job `manifests`** (em `ubuntu-latest`, que tem `kubectl`; o runner arm não tem):
   - Roda `kubectl kustomize deploy/k8s` e passa o resultado pelo kubeconform v0.8.0 (binário baixado e conferido pelo `CHECKSUMS` publicado), com `-strict -summary -kubernetes-version 1.36.0`.
   - Valida também `deploy/argocd/*.yaml`, com o schema de CRDs do catálogo `datreeio/CRDs-catalog`.
-  - Se o catálogo não tiver o schema do `ImageUpdater`, esse kind é pulado com `-skip ImageUpdater`, e não com `-ignore-missing-schemas`, que esconderia erro de digitação em `kind`. Quem decide é a task 3.3.
+  - O `ImageUpdater` é pulado com `-skip ImageUpdater` (decisão da task 3.3): o catálogo tem o schema `imageupdater_v1alpha1`, mas ele está desatualizado (ainda exige `spec.namespace`, removido na v1.2) e recusa o arquivo válido para a v1.4.0. O arquivo foi validado localmente contra o CRD do `install.yaml` da v1.4.0. Não se usa `-ignore-missing-schemas`, que esconderia erro de digitação em `kind`.
   - O `image` passa a depender de `manifests`.
   - O check obrigatório da `main` continua sendo só `build`. **Alternativa rejeitada:** torná-lo obrigatório, porque exigiria mudar a proteção da branch à mão; fica como sugestão no README.
 - **Regras dos workflows mantidas:** valores só por `env:`, sem `${{ }}` dentro de `run:`; permissões mínimas por job; actionlint.
@@ -224,7 +224,7 @@ spec:
 ### D7. Rollback
 
 - **Fixar uma tag (padrão)**:
-  1. Restringir o CR: `kubectl -n argocd patch imageupdater educare --type json -p '[{"op":"replace","path":"/spec/applicationRefs/0/images/0/commonUpdateSettings/allowTags","value":"regexp:^v0\\.2\\.0$"}]'`.
+  1. Restringir o CR: `kubectl -n argocd patch imageupdater educare --type json -p '[{"op":"replace","path":"/spec/applicationRefs/0/images/0/commonUpdateSettings/allowTags","value":"regexp:^v0[.]2[.]0$"}]'` (colchetes em vez de `\\.`, para o mesmo comando valer no fish e no bash).
   2. O updater leva a Application a essa tag no ciclo seguinte. Para não esperar, rodar `argocd app set educare --kustomize-image ghcr.io/manuelaalecio/educare-backend:v0.2.0`.
   3. Para soltar, reaplicar `deploy/argocd/image-updater.yaml`. Nada disso exige commit na `main`.
 - **Pelo histórico do Argo CD**: `argocd app rollback` não funciona com auto-sync ligado. O procedimento é:

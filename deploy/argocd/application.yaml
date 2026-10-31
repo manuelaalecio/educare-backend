@@ -1,0 +1,26 @@
+# Application do Educare. Aplicada uma única vez com kubectl (README, "Deploy em produção"),
+# fora de app-of-apps: um pai com selfHeal reverteria a tag gravada pelo Image Updater.
+#
+# Sem spec.source.kustomize, de propósito: o Image Updater grava ali a tag da versão
+# (write-back argocd), e um kubectl apply posterior deste arquivo não sobrescreve esse campo.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: educare
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/manuelaalecio/educare-backend.git
+    targetRevision: main
+    path: deploy/k8s
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: educare
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      # O Namespace vem dos manifests e já existe: o Secret educare-env é criado antes.
+      - CreateNamespace=false
