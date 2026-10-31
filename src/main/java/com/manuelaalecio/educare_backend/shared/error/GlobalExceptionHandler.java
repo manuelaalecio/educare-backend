@@ -60,6 +60,11 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 		return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
 	}
 
+	@ExceptionHandler(TooManyRequestsException.class)
+	ProblemDetail handleTooManyRequests(TooManyRequestsException ex) {
+		return ProblemDetail.forStatusAndDetail(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage());
+	}
+
 	@ExceptionHandler(InvalidSortPropertyException.class)
 	ProblemDetail handleInvalidSortProperty(InvalidSortPropertyException ex) {
 		return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());

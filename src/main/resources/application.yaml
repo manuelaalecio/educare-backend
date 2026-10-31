@@ -25,6 +25,7 @@ educare:
     jwt:
       expiration: 8h
 # Actuator: só o health é exposto na web, respondendo só o status agregado (spec security).
+# Os probes de liveness e readiness ficam ligados explicitamente: o Deployment do k3s depende deles.
 management:
   endpoints:
     web:
@@ -34,9 +35,14 @@ management:
     health:
       show-details: never
       show-components: never
-# Documentação da API (OpenAPI e Swagger UI) desligada por padrão; só o dev liga.
+      probes:
+        enabled: true
 springdoc:
   api-docs:
     enabled: false
   swagger-ui:
     enabled: false
+  writer-with-order-by-keys: true
+  writer-with-default-pretty-printer: true
+  override-with-generic-response: false
+  default-produces-media-type: application/json

@@ -1,0 +1,24 @@
+# Manifests do Educare no k3s, sincronizados pelo Argo CD (deploy/argocd/application.yaml).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: educare
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: educare
+
+resources:
+  - namespace.yaml
+  - postgres/service.yaml
+  - postgres/statefulset.yaml
+  - api/service.yaml
+  - api/deployment.yaml
+  - ingress.yaml
+
+# Tag de bootstrap: a primeira versão arm64, usada só quando a Application é criada (ou recriada).
+# Depois disso, a tag em produção é a que o Argo CD Image Updater grava na Application
+# (spec.source.kustomize.images), sem commit no repositório.
+images:
+  - name: ghcr.io/manuelaalecio/educare-backend
+    newTag: v0.2.0

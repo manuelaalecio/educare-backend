@@ -1,5 +1,6 @@
 package com.manuelaalecio.educare_backend.shared.security;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.containsStringIgnoringCase;
@@ -16,9 +17,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.UUID;
 
+import com.jayway.jsonpath.JsonPath;
 import com.manuelaalecio.educare_backend.shared.testsupport.AccessTokens;
 import com.manuelaalecio.educare_backend.shared.testsupport.MutableClock;
 import com.manuelaalecio.educare_backend.shared.testsupport.MutableClockConfiguration;
@@ -208,6 +211,67 @@ class SecurityScenarioTest {
 		// then
 		result.andExpect(status().isOk())
 				.andExpect(jsonPath("$.login").value(ANA_LOGIN));
+	}
+
+	@Test
+	@DisplayName("Scenario: Token emitido antes da troca de senha")
+	void shouldRespondUnauthorizedLikeMalformedTokenWhenTokenPredatesPasswordChange() throws Exception {
+		// given
+		testUsers.create("Ana Souza", ANA_LOGIN, ANA_PASSWORD, "USER");
+		clock.setInstant(Instant.parse("2026-03-01T10:00:00Z"));
+		String tokenA = testUsers.bearer(ANA_LOGIN, ANA_PASSWORD);
+		clock.setInstant(Instant.parse("2026-03-01T10:20:00Z"));
+		String tokenB = testUsers.bearer(ANA_LOGIN, ANA_PASSWORD);
+		clock.setInstant(Instant.parse("2026-03-01T10:30:00Z"));
+		changeOwnPassword(tokenB).andExpect(status().isOk());
+		String malformed = mockMvc.perform(get(ME).header(HttpHeaders.AUTHORIZATION, "Bearer abc.def"))
+				.andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+
+		// when
+		clock.setInstant(Instant.parse("2026-03-01T10:31:00Z"));
+		ResultActions result = mockMvc.perform(get(ME).header(HttpHeaders.AUTHORIZATION, tokenA));
+
+		// then
+		expectUnauthorized(result);
+		String body = result.andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+		assertThat((String) JsonPath.read(body, "$.title")).isEqualTo(JsonPath.read(malformed, "$.title"));
+		assertThat((String) JsonPath.read(body, "$.detail")).isEqualTo(JsonPath.read(malformed, "$.detail"));
+	}
+
+	@Test
+	@DisplayName("Scenario: Token emitido no mesmo segundo da troca")
+	void shouldRespondOkWhenTokenWasIssuedInSameSecondAsPasswordChange() throws Exception {
+		// given
+		testUsers.create("Ana Souza", ANA_LOGIN, ANA_PASSWORD, "USER");
+		clock.setInstant(Instant.parse("2026-03-01T10:00:00.100Z"));
+		String tokenA = testUsers.bearer(ANA_LOGIN, ANA_PASSWORD);
+		clock.setInstant(Instant.parse("2026-03-01T10:00:00.500Z"));
+		String tokenB = testUsers.bearer(ANA_LOGIN, ANA_PASSWORD);
+		clock.setInstant(Instant.parse("2026-03-01T10:00:00.900Z"));
+		changeOwnPassword(tokenB).andExpect(status().isOk());
+
+		// when
+		clock.setInstant(Instant.parse("2026-03-01T10:00:01Z"));
+		ResultActions result = mockMvc.perform(get(ME).header(HttpHeaders.AUTHORIZATION, tokenA));
+
+		// then
+		result.andExpect(status().isOk());
+	}
+
+	@Test
+	@DisplayName("Scenario: Usuário sem troca de senha registrada")
+	void shouldRespondOkWhenUserNeverChangedPassword() throws Exception {
+		// given
+		UUID ana = testUsers.create("Ana Souza", ANA_LOGIN, ANA_PASSWORD, "USER");
+		assertThat(jdbcTemplate.queryForObject("SELECT password_changed_at IS NULL FROM users WHERE id = ?",
+				Boolean.class, ana)).isTrue();
+		String anaBearer = testUsers.bearer(ANA_LOGIN, ANA_PASSWORD);
+
+		// when
+		ResultActions result = mockMvc.perform(get(ME).header(HttpHeaders.AUTHORIZATION, anaBearer));
+
+		// then
+		result.andExpect(status().isOk());
 	}
 
 	// ---------- Role vigente decide o acesso ----------
@@ -409,6 +473,14 @@ class SecurityScenarioTest {
 				.andExpect(header().string(HttpHeaders.WWW_AUTHENTICATE, startsWith("Bearer")))
 				.andExpect(jsonPath("$.status").value(401))
 				.andExpect(jsonPath("$.detail").value(UNAUTHORIZED_DETAIL));
+	}
+
+	private ResultActions changeOwnPassword(String bearer) throws Exception {
+		return mockMvc.perform(put("/api/v1/auth/me/password")
+				.header(HttpHeaders.AUTHORIZATION, bearer)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+						{"currentPassword": "segredo123", "newPassword": "novaSenha456"}"""));
 	}
 
 	private void expectForbidden(ResultActions result) throws Exception {

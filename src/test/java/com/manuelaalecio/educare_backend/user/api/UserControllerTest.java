@@ -38,6 +38,7 @@ import com.manuelaalecio.educare_backend.shared.security.AuthenticatedUserLookup
 import com.manuelaalecio.educare_backend.shared.security.JwtConfiguration;
 import com.manuelaalecio.educare_backend.shared.security.ProblemDetailSecurityHandlers;
 import com.manuelaalecio.educare_backend.shared.security.SecurityConfiguration;
+import com.manuelaalecio.educare_backend.shared.security.TokenOwner;
 import com.manuelaalecio.educare_backend.shared.testsupport.AccessTokens;
 import com.manuelaalecio.educare_backend.user.application.UserService;
 import com.manuelaalecio.educare_backend.user.domain.LastAdminException;
@@ -101,8 +102,10 @@ class UserControllerTest {
 
 	@BeforeEach
 	void setUpAuthenticatedUsers() {
-		given(lookup.findById(ADMIN_ID)).willReturn(Optional.of(new AuthenticatedUser(ADMIN_ID, "ADMIN")));
-		given(lookup.findById(USER_ID)).willReturn(Optional.of(new AuthenticatedUser(USER_ID, "USER")));
+		given(lookup.findById(ADMIN_ID))
+				.willReturn(Optional.of(new TokenOwner(new AuthenticatedUser(ADMIN_ID, "ADMIN"), null)));
+		given(lookup.findById(USER_ID))
+				.willReturn(Optional.of(new TokenOwner(new AuthenticatedUser(USER_ID, "USER"), null)));
 	}
 
 	// ---------- authentication and authorization (every endpoint) ----------

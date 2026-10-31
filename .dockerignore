@@ -17,6 +17,7 @@
 build/
 
 # Documentação, planejamento e arquivos operacionais
+openapi/
 openspec/
 deploy/
 tentar-vm.sh

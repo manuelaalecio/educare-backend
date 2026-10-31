@@ -3,6 +3,7 @@ package com.manuelaalecio.educare_backend.user.domain;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.BrokenBarrierException;
@@ -65,6 +66,37 @@ class UserRepositoryTest {
 
 		// then
 		assertThat(exists).isTrue();
+	}
+
+	@Test
+	void shouldPersistPasswordChangeInstantWhenPasswordChanges() {
+		// given
+		var user = userRepository.saveAndFlush(new User("Ana Souza", "ana@educare.org", "hash"));
+		user.changePassword("other-hash", Instant.parse("2026-03-01T10:00:00.900Z"));
+		userRepository.saveAndFlush(user);
+		entityManager.clear();
+
+		// when
+		User reloaded = userRepository.findById(user.getId()).orElseThrow();
+
+		// then
+		assertThat(reloaded.getPasswordHash()).isEqualTo("other-hash");
+		assertThat(reloaded.getPasswordChangedAt()).isEqualTo(Instant.parse("2026-03-01T10:00:00Z"));
+	}
+
+	@Test
+	void shouldReadNullPasswordChangeInstantWhenPasswordNeverChanged() {
+		// given
+		var user = userRepository.saveAndFlush(new User("Ana Souza", "ana@educare.org", "hash"));
+		entityManager.clear();
+
+		// when
+		User reloaded = userRepository.findById(user.getId()).orElseThrow();
+
+		// then
+		assertThat(reloaded.getPasswordChangedAt()).isNull();
+		assertThat(jdbcTemplate.queryForObject("SELECT password_changed_at IS NULL FROM users WHERE id = ?",
+				Boolean.class, user.getId())).isTrue();
 	}
 
 	@Test

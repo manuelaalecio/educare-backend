@@ -94,6 +94,18 @@ class GlobalExceptionHandlerTest {
 	}
 
 	@Test
+	void shouldReturnTooManyRequestsWithExceptionMessageAndNoErrorsWhenAttemptsAreExhausted() {
+		// when
+		ProblemDetail problem = handler.handleTooManyRequests(new SampleTooManyRequestsException());
+
+		// then
+		assertThat(problem.getStatus()).isEqualTo(429);
+		assertThat(problem.getTitle()).isEqualTo("Too Many Requests");
+		assertThat(problem.getDetail()).isEqualTo("Tentativas demais");
+		assertThat(problem.getProperties()).isNullOrEmpty();
+	}
+
+	@Test
 	void shouldReturnBadRequestWhenSortPropertyIsNotAllowed() {
 		// when
 		ProblemDetail problem = handler.handleInvalidSortProperty(new InvalidSortPropertyException("password"));
@@ -124,6 +136,14 @@ class GlobalExceptionHandlerTest {
 
 		SampleNotFoundException() {
 			super("Amostra não encontrada");
+		}
+
+	}
+
+	static class SampleTooManyRequestsException extends TooManyRequestsException {
+
+		SampleTooManyRequestsException() {
+			super("Tentativas demais");
 		}
 
 	}

@@ -4,6 +4,10 @@ import java.net.URI;
 import java.util.Set;
 import java.util.UUID;
 
+import com.manuelaalecio.educare_backend.shared.config.BadRequestResponse;
+import com.manuelaalecio.educare_backend.shared.config.ConflictResponse;
+import com.manuelaalecio.educare_backend.shared.config.ForbiddenResponse;
+import com.manuelaalecio.educare_backend.shared.config.NotFoundResponse;
 import com.manuelaalecio.educare_backend.shared.error.InvalidSortPropertyException;
 import com.manuelaalecio.educare_backend.shared.security.AuthenticatedUser;
 import com.manuelaalecio.educare_backend.user.api.dto.ChangePasswordRequest;
@@ -12,6 +16,9 @@ import com.manuelaalecio.educare_backend.user.api.dto.UpdateUserRequest;
 import com.manuelaalecio.educare_backend.user.api.dto.UserResponse;
 import com.manuelaalecio.educare_backend.user.application.UserService;
 import com.manuelaalecio.educare_backend.user.domain.User;
+import io.swagger.v3.oas.annotations.headers.Header;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
@@ -37,6 +44,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 @RequestMapping(UserController.BASE_PATH)
 @RequiredArgsConstructor
 @PreAuthorize("hasRole('ADMIN')")
+@ForbiddenResponse
 public class UserController {
 
 	static final String BASE_PATH = "/api/v1/users";
@@ -51,6 +59,10 @@ public class UserController {
 	private final UserMapper userMapper;
 
 	@PostMapping
+	@ApiResponse(responseCode = "201", description = "Created", headers = @Header(name = "Location",
+			description = "Path of the created user", schema = @Schema(type = "string", format = "uri")))
+	@BadRequestResponse
+	@ConflictResponse
 	public ResponseEntity<UserResponse> create(@Valid @RequestBody CreateUserRequest request) {
 		User user = userService.create(request.name(), request.login(), request.password(),
 				userMapper.toRole(request.role()));
@@ -59,6 +71,9 @@ public class UserController {
 	}
 
 	@GetMapping
+	// runtime no-op, so that springdoc documents the 200 next to the declared errors (see AuthController.login)
+	@ResponseStatus(HttpStatus.OK)
+	@BadRequestResponse
 	public PagedModel<UserResponse> list(@PageableDefault(size = 20, sort = "name") Pageable pageable) {
 		for (Sort.Order order : pageable.getSort()) {
 			if (!SORTABLE_PROPERTIES.contains(order.getProperty())) {
@@ -69,11 +84,18 @@ public class UserController {
 	}
 
 	@GetMapping("/{id}")
+	@ResponseStatus(HttpStatus.OK)
+	@BadRequestResponse
+	@NotFoundResponse
 	public UserResponse findById(@PathVariable UUID id) {
 		return userMapper.toResponse(userService.findById(id));
 	}
 
 	@PutMapping("/{id}")
+	@ResponseStatus(HttpStatus.OK)
+	@BadRequestResponse
+	@NotFoundResponse
+	@ConflictResponse
 	public UserResponse update(@PathVariable UUID id, @Valid @RequestBody UpdateUserRequest request,
 			@AuthenticationPrincipal AuthenticatedUser actor) {
 		User user = userService.update(id, request.name(), request.login(), userMapper.toRole(request.role()),
@@ -83,12 +105,17 @@ public class UserController {
 
 	@PutMapping("/{id}/password")
 	@ResponseStatus(HttpStatus.NO_CONTENT)
+	@BadRequestResponse
+	@NotFoundResponse
 	public void changePassword(@PathVariable UUID id, @Valid @RequestBody ChangePasswordRequest request) {
 		userService.changePassword(id, request.password());
 	}
 
 	@DeleteMapping("/{id}")
 	@ResponseStatus(HttpStatus.NO_CONTENT)
+	@BadRequestResponse
+	@NotFoundResponse
+	@ConflictResponse
 	public void delete(@PathVariable UUID id, @AuthenticationPrincipal AuthenticatedUser actor) {
 		userService.delete(id, actor.id());
 	}

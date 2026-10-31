@@ -33,10 +33,14 @@ import com.manuelaalecio.educare_backend.shared.security.IssuedAccessToken;
 import com.manuelaalecio.educare_backend.shared.security.JwtConfiguration;
 import com.manuelaalecio.educare_backend.shared.security.ProblemDetailSecurityHandlers;
 import com.manuelaalecio.educare_backend.shared.security.SecurityConfiguration;
+import com.manuelaalecio.educare_backend.shared.security.TokenOwner;
 import com.manuelaalecio.educare_backend.shared.testsupport.AccessTokens;
 import com.manuelaalecio.educare_backend.shared.testsupport.MutableClockConfiguration;
 import com.manuelaalecio.educare_backend.user.application.UserAccount;
 import com.manuelaalecio.educare_backend.user.domain.InvalidCurrentPasswordException;
+import com.manuelaalecio.educare_backend.user.domain.NewPasswordSameAsCurrentException;
+import com.manuelaalecio.educare_backend.user.domain.NewPasswordSameAsLoginException;
+import com.manuelaalecio.educare_backend.user.domain.TooManyPasswordAttemptsException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -237,17 +241,21 @@ class AuthControllerTest {
 	// ---------- PUT /api/v1/auth/me/password ----------
 
 	@Test
-	void shouldChangeOwnPasswordWhenBodyIsValid() throws Exception {
+	void shouldReturnNewBearerTokenWhenOwnPasswordIsChanged() throws Exception {
 		// given
 		givenUser("USER");
+		given(authService.changeOwnPassword(USER_ID, "segredo123", "novaSenha456"))
+				.willReturn(new IssuedAccessToken(TOKEN, 28800));
 
 		// when
 		ResultActions result = changePassword(VALID_PASSWORD_CHANGE_BODY);
 
 		// then
-		result.andExpect(status().isNoContent())
-				.andExpect(content().string(""));
-		then(authService).should().changeOwnPassword(USER_ID, "segredo123", "novaSenha456");
+		result.andExpect(status().isOk())
+				.andExpect(content().contentType(MediaType.APPLICATION_JSON))
+				.andExpect(jsonPath("$.accessToken").value(TOKEN))
+				.andExpect(jsonPath("$.tokenType").value("Bearer"))
+				.andExpect(jsonPath("$.expiresIn").value(28800));
 	}
 
 	@Test
@@ -318,6 +326,64 @@ class AuthControllerTest {
 	}
 
 	@Test
+	void shouldRejectPasswordChangeWhenNewPasswordIsCurrentPassword() throws Exception {
+		// given
+		givenUser("USER");
+		willThrow(new NewPasswordSameAsCurrentException()).given(authService)
+				.changeOwnPassword(USER_ID, "segredo123", "segredo123");
+
+		// when
+		ResultActions result = changePassword("""
+				{"currentPassword": "segredo123", "newPassword": "segredo123"}""");
+
+		// then
+		result.andExpect(status().isBadRequest())
+				.andExpect(content().contentType(PROBLEM_JSON))
+				.andExpect(jsonPath("$.errors", hasSize(1)))
+				.andExpect(jsonPath("$.errors[0].field").value("newPassword"))
+				.andExpect(jsonPath("$.errors[0].message").value("Deve ser diferente da senha atual"));
+	}
+
+	@Test
+	void shouldRejectPasswordChangeWithoutRepeatingLoginWhenNewPasswordIsLogin() throws Exception {
+		// given
+		givenUser("USER");
+		willThrow(new NewPasswordSameAsLoginException()).given(authService)
+				.changeOwnPassword(USER_ID, "segredo123", "Ana.Souza@EDUCARE.org");
+
+		// when
+		ResultActions result = changePassword("""
+				{"currentPassword": "segredo123", "newPassword": "Ana.Souza@EDUCARE.org"}""");
+
+		// then
+		result.andExpect(status().isBadRequest())
+				.andExpect(content().contentType(PROBLEM_JSON))
+				.andExpect(jsonPath("$.errors", hasSize(1)))
+				.andExpect(jsonPath("$.errors[0].field").value("newPassword"))
+				.andExpect(jsonPath("$.errors[0].message").value("Não pode ser igual ao login"))
+				.andExpect(content().string(not(containsString("Souza"))));
+	}
+
+	@Test
+	void shouldRespondTooManyRequestsWithoutErrorsWhenAttemptsAreExhausted() throws Exception {
+		// given
+		givenUser("USER");
+		willThrow(new TooManyPasswordAttemptsException()).given(authService)
+				.changeOwnPassword(USER_ID, "segredo123", "novaSenha456");
+
+		// when
+		ResultActions result = changePassword(VALID_PASSWORD_CHANGE_BODY);
+
+		// then
+		result.andExpect(status().isTooManyRequests())
+				.andExpect(content().contentType(PROBLEM_JSON))
+				.andExpect(jsonPath("$.status").value(429))
+				.andExpect(jsonPath("$.detail").value("Muitas tentativas. Tente novamente em alguns minutos."))
+				.andExpect(jsonPath("$.errors").doesNotExist())
+				.andExpect(jsonPath("$.accessToken").doesNotExist());
+	}
+
+	@Test
 	void shouldRejectPasswordChangeWhenBodyIsNotValidJson() throws Exception {
 		// given
 		givenUser("USER");
@@ -368,7 +434,8 @@ class AuthControllerTest {
 	}
 
 	private void givenUser(String role) {
-		given(lookup.findById(USER_ID)).willReturn(Optional.of(new AuthenticatedUser(USER_ID, role)));
+		given(lookup.findById(USER_ID))
+				.willReturn(Optional.of(new TokenOwner(new AuthenticatedUser(USER_ID, role), null)));
 	}
 
 }

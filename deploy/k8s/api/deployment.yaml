@@ -1,0 +1,106 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: educare-backend
+  labels:
+    app.kubernetes.io/name: educare-backend
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  # A API é stateless: o pod novo sobe e fica pronto antes de o antigo sair.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: educare-backend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: educare-backend
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 45
+      containers:
+        - name: api
+          # Tag definida pelo images: do kustomization.yaml (e, em produção, pelo Image Updater).
+          image: ghcr.io/manuelaalecio/educare-backend
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: prod
+            - name: SPRING_DATASOURCE_URL
+              value: jdbc:postgresql://postgres.educare.svc:5432/app
+            - name: SPRING_DATASOURCE_USERNAME
+              value: app
+            # Segredos só do Secret educare-env, criado à mão no cluster. Sem optional: Secret ou
+            # chave ausente deixa o pod em CreateContainerConfigError, sem valor padrão.
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: educare-env
+                  key: DB_PASSWORD
+            - name: EDUCARE_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: educare-env
+                  key: EDUCARE_JWT_SECRET
+            - name: EDUCARE_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: educare-env
+                  key: EDUCARE_ADMIN_PASSWORD
+            - name: EDUCARE_CORS_ALLOWED_ORIGINS
+              valueFrom:
+                secretKeyRef:
+                  name: educare-env
+                  key: EDUCARE_CORS_ALLOWED_ORIGINS
+            # Heap proporcional ao limit (60% de 1Gi ≈ 614MiB), com folga para metaspace e threads.
+            - name: JAVA_TOOL_OPTIONS
+              value: -XX:MaxRAMPercentage=60 -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError
+          # Sem limit de CPU: o throttling atrasa muito a subida da JVM.
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              memory: 1Gi
+          # Até 180s para a primeira subida (Flyway) em 2 OCPUs.
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 36
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          # Dá tempo ao Traefik de tirar o pod do balanceamento antes do shutdown gracioso.
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: 10
+          # Sem runAsNonRoot: o USER da imagem é por nome (app), e o kubelet exige UID numérico.
+          # A imagem já roda como não root.
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault

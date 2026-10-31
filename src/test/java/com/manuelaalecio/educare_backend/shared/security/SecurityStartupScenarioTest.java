@@ -39,7 +39,8 @@ import org.testcontainers.utility.DockerImageName;
 
 /**
  * Startup scenarios of the requirements "Chave de assinatura obrigatória em produção", "CORS restrito às origens do
- * frontend" and "Documentação da API só em desenvolvimento": the application is started with the {@code prod}
+ * frontend", "Documentação da API só em desenvolvimento" and "Actuator restrito ao health, sem detalhes" (probes in
+ * {@code prod}): the application is started with the {@code prod}
  * profile, a real web server on a random port and all other configuration valid. Same pattern as
  * {@code AdminSeedScenarioTest}: its own container and a fresh database per test instead of
  * {@code TestcontainersConfiguration}, and the variables read by {@code application-prod.yaml}
@@ -51,6 +52,7 @@ class SecurityStartupScenarioTest {
 	private static final String JWT_SECRET_VARIABLE = "EDUCARE_JWT_SECRET";
 	private static final String CORS_ALLOWED_ORIGINS_VARIABLE = "EDUCARE_CORS_ALLOWED_ORIGINS";
 	private static final String ADMIN_PASSWORD_VARIABLE = "EDUCARE_ADMIN_PASSWORD";
+	private static final String KUBERNETES_SERVICE_HOST_VARIABLE = "KUBERNETES_SERVICE_HOST";
 
 	private static final String VALID_SECRET = "a".repeat(32);
 	private static final String VALID_ORIGINS = "https://educare.example.org";
@@ -137,6 +139,29 @@ class SecurityStartupScenarioTest {
 	}
 
 	@Test
+	@DisplayName("Scenario: Probes disponíveis no profile prod")
+	void shouldRespondOnlyStatusUpWhenProbesAreRequestedInProdProfile() throws IOException, InterruptedException {
+		// given: the prod profile with all configuration valid and no Kubernetes variable in the environment
+		try (ConfigurableApplicationContext context = startProdApplication(argument(JWT_SECRET_VARIABLE, VALID_SECRET),
+				argument(CORS_ALLOWED_ORIGINS_VARIABLE, VALID_ORIGINS))) {
+			assertThat(context.getEnvironment().getProperty(KUBERNETES_SERVICE_HOST_VARIABLE)).isNull();
+			int port = context.getEnvironment().getRequiredProperty("local.server.port", Integer.class);
+			try (HttpClient client = HttpClient.newHttpClient()) {
+				for (String probe : new String[] {"/actuator/health/liveness", "/actuator/health/readiness"}) {
+					// when
+					HttpResponse<String> response = client.send(
+							HttpRequest.newBuilder(URI.create("http://localhost:" + port + probe)).GET().build(),
+							HttpResponse.BodyHandlers.ofString());
+
+					// then
+					assertThat(response.statusCode()).as(probe).isEqualTo(200);
+					assertThat(response.body()).as(probe).isEqualToIgnoringWhitespace("{\"status\":\"UP\"}");
+				}
+			}
+		}
+	}
+
+	@Test
 	@DisplayName("Scenario: Produção sem origens")
 	void shouldRefuseStartupWhenProdProfileHasNoCorsOrigins() {
 		// given: the prod profile with database, admin password and signing key, and no CORS origins
@@ -182,7 +207,8 @@ class SecurityStartupScenarioTest {
 
 	/**
 	 * The JVM environment cannot be changed, so the application gets a copy of it without the variables of these
-	 * scenarios. This keeps them deterministic even when the variables are set where the tests run.
+	 * scenarios (including {@code KUBERNETES_SERVICE_HOST}, so the probes do not depend on detecting Kubernetes).
+	 * This keeps them deterministic even when the variables are set where the tests run.
 	 */
 	private static StandardEnvironment environmentWithoutSecurityVariables() {
 		StandardEnvironment environment = new StandardEnvironment();
@@ -190,6 +216,7 @@ class SecurityStartupScenarioTest {
 		variables.remove(JWT_SECRET_VARIABLE);
 		variables.remove(CORS_ALLOWED_ORIGINS_VARIABLE);
 		variables.remove(ADMIN_PASSWORD_VARIABLE);
+		variables.remove(KUBERNETES_SERVICE_HOST_VARIABLE);
 		environment.getPropertySources()
 			.replace(SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME,
 					new SystemEnvironmentPropertySource(SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME, variables));

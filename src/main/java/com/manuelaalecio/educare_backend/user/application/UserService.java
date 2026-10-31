@@ -1,11 +1,14 @@
 package com.manuelaalecio.educare_backend.user.application;
 
+import java.time.Clock;
 import java.util.Optional;
 import java.util.UUID;
 
 import com.manuelaalecio.educare_backend.user.domain.InvalidCurrentPasswordException;
 import com.manuelaalecio.educare_backend.user.domain.LastAdminException;
 import com.manuelaalecio.educare_backend.user.domain.LoginAlreadyInUseException;
+import com.manuelaalecio.educare_backend.user.domain.NewPasswordSameAsCurrentException;
+import com.manuelaalecio.educare_backend.user.domain.NewPasswordSameAsLoginException;
 import com.manuelaalecio.educare_backend.user.domain.Role;
 import com.manuelaalecio.educare_backend.user.domain.SelfDeletionException;
 import com.manuelaalecio.educare_backend.user.domain.User;
@@ -35,6 +38,8 @@ public class UserService {
 
 	private final UserRepository userRepository;
 	private final PasswordEncoder passwordEncoder;
+	private final Clock clock;
+	private final PasswordAttemptLimiter passwordAttemptLimiter;
 
 	/**
 	 * @param role {@code null} creates the user with the default role ({@link Role#USER})
@@ -77,9 +82,12 @@ public class UserService {
 		return saveAndFlush(user);
 	}
 
+	/**
+	 * Password reset by an ADMIN. Also disconnects the user: their tokens issued before now are refused.
+	 */
 	public void changePassword(UUID id, String password) {
 		User user = findById(id);
-		user.changePasswordHash(passwordEncoder.encode(password));
+		user.changePassword(passwordEncoder.encode(password), clock.instant());
 		userRepository.saveAndFlush(user);
 	}
 
@@ -116,13 +124,28 @@ public class UserService {
 		return toAccount(findById(id));
 	}
 
+	/**
+	 * Changes the password of the user themselves, which disconnects their other sessions (tokens issued before now
+	 * are refused). Only a wrong current password counts towards the {@link PasswordAttemptLimiter}; a blocked user
+	 * is refused before the password is even checked.
+	 */
 	public void changeOwnPassword(UUID id, String currentPassword, String newPassword) {
+		passwordAttemptLimiter.ensureAllowed(id);
 		User user = findById(id);
 		if (!passwordEncoder.matches(currentPassword, user.getPasswordHash())) {
+			passwordAttemptLimiter.recordFailure(id);
 			throw new InvalidCurrentPasswordException();
 		}
-		user.changePasswordHash(passwordEncoder.encode(newPassword));
+		// the current password was just checked, so comparing the strings is enough (and spares a BCrypt round)
+		if (newPassword.equals(currentPassword)) {
+			throw new NewPasswordSameAsCurrentException();
+		}
+		if (User.normalizeLogin(newPassword).equals(user.getLogin())) {
+			throw new NewPasswordSameAsLoginException();
+		}
+		user.changePassword(passwordEncoder.encode(newPassword), clock.instant());
 		userRepository.saveAndFlush(user);
+		passwordAttemptLimiter.reset(id);
 	}
 
 	/**

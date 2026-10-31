@@ -1,0 +1,16 @@
+# Headless (clusterIP: None, tipo ClusterIP): postgres.educare.svc resolve para o pod do StatefulSet.
+# Só acessível dentro do cluster: nunca NodePort, LoadBalancer nem Ingress.
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  labels:
+    app.kubernetes.io/name: postgres
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres

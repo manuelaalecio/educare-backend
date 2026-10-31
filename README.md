@@ -127,20 +127,44 @@ Relatórios gerados:
 | Cobertura (JaCoCo) | `build/reports/jacoco/test/html/index.html` |
 | Mutation testing (PIT) | `build/reports/pitest/index.html` |
 
+## Contrato da API
+
+O contrato OpenAPI da API fica versionado em [`openapi/educare-api.json`](openapi/educare-api.json). Ele é gerado pela própria aplicação (springdoc) e é a fonte de onde o frontend gera os tipos dele. Como o repositório é público, o frontend lê o contrato da `main`, sem credenciais:
+
+```
+https://raw.githubusercontent.com/manuelaalecio/educare-backend/main/openapi/educare-api.json
+```
+
+O `./gradlew build` (e, portanto, o CI) **falha quando o arquivo commitado é diferente do documento que a aplicação gera**, ou quando ele não existe. Isso acontece sempre que um endpoint, um DTO ou uma anotação de documentação muda. A mensagem da falha indica o comando que regenera o arquivo:
+
+```bash
+./gradlew updateApiContract    # reescreve openapi/educare-api.json (precisa do Docker, como os testes)
+```
+
+Depois de rodar, revise o diff do `openapi/educare-api.json` e commite junto com a mudança. O diff no PR mostra o que mudou para o frontend.
+
+No profile `dev`, o mesmo documento fica em `/v3/api-docs` e no Swagger UI. Fora do `dev` eles não são servidos: o contrato público é o arquivo do repositório.
+
 ## Deploy em produção
 
-A produção roda numa VM `x86_64` da Oracle Cloud (1 GB de RAM + 2 GB de swap, usuário `ubuntu`, diretório `~/app`), com Docker Compose. A VM não compila nada: ela só baixa a imagem publicada no GitHub Container Registry (GHCR). O PostgreSQL fica em outra VM, acessado pelo IP privado.
+A produção roda num cluster **k3s** de nó único, numa VM Oracle Cloud Ampere `arm64` (2 OCPUs, 12 GB, Ubuntu 24.04), com Traefik como Ingress e `local-path` como storage. O **Argo CD**, no namespace `argocd`, aplica os manifests versionados neste repositório. O PostgreSQL roda dentro do cluster. O pipeline não usa SSH nem acessa o cluster: a CI só constrói e publica a imagem, e o cluster busca as versões novas sozinho.
 
 ### Como funciona
 
-| Evento | O que roda | Workflow |
-|---|---|---|
-| PR para a `main` | só os testes (`./gradlew build`, check `build` obrigatório) | `ci.yml` |
-| Merge (push) na `main` | os testes e, **se o PR tiver o label `build`**, a publicação de `ghcr.io/manuelaalecio/educare-backend:<sha7>` e `:latest`. Nunca faz deploy | `ci.yml` |
-| Tag `v*` | deploy da imagem `<sha7>` do commit da tag, que precisa estar na `main` | `deploy.yml` |
-| Disparo manual (`workflow_dispatch`) | deploy da `image_tag` informada (rollback) ou, vazia, do `<sha7>` do commit | `deploy.yml` |
+| Evento | O que roda |
+|---|---|
+| PR para a `main` | os testes (`./gradlew build`, check `build` obrigatório) e a validação dos manifests (job `manifests`) |
+| Merge (push) na `main` | os testes e, **se o PR tiver o label `build`**, a publicação de `ghcr.io/manuelaalecio/educare-backend:<sha7>` e `:latest` |
+| Tag `vX.Y.Z` num commit da `main` | os testes e a publicação de `:vX.Y.Z`, `:<sha7>` e `:latest`, sem exigir o label. Uma tag fora da `main` ou fora do formato `vX.Y.Z` não publica nada |
 
-`<sha7>` são os 7 primeiros caracteres do SHA do commit de merge na `main`. O deploy nunca reconstrói a imagem: ele só implanta uma que já foi publicada. Por isso, uma tag num commit cujo PR não tinha o label `build` falha antes de conectar na VM.
+As imagens são só `linux/arm64`, construídas num runner arm nativo do GitHub Actions. `<sha7>` são os 7 primeiros caracteres do SHA do commit.
+
+No cluster:
+
+1. O **Argo CD** sincroniza a Application `educare` com `deploy/k8s` da `main`, com `prune` e `selfHeal`. Mudanças nos manifests chegam ao cluster depois do merge.
+2. O **Argo CD Image Updater** consulta o GHCR a cada 2 minutos. Quando encontra uma tag `vX.Y.Z` maior que a atual, grava essa tag direto na Application, sem commit em nenhuma branch, e o Argo CD faz o rolling update. A versão nova só recebe tráfego quando `/actuator/health/readiness` responde `UP`.
+
+A tag do `images:` em `deploy/k8s/kustomization.yaml` é só a **tag de bootstrap**: o cluster a usa se a Application for recriada, até o Image Updater subir de novo para a maior `vX.Y.Z`.
 
 **Esqueceu o label?** Adicione o label ao PR já mergeado e reexecute a execução do push na `main`. A imagem daquele commit é publicada sem precisar de outro commit:
 
@@ -150,101 +174,155 @@ gh run list --workflow ci.yml --branch main --limit 5    # pega o id da execuç�
 gh run rerun <id-da-execucao>
 ```
 
-O deploy:
+Arquivos de produção:
 
-1. copia `deploy/compose.yaml`, `deploy/Caddyfile` e `deploy/deploy.sh` para `~/app`;
-2. grava `~/app/deploy.env` só com `IMAGE_TAG=<tag>`, sem tocar no `~/app/.env`;
-3. roda `docker compose pull` e `up -d` com os dois arquivos;
-4. espera `http://localhost:8080/actuator/health` responder `UP` de dentro da VM por até ~3 minutos. Se não responder, mostra os logs da `api` e falha.
-
-Arquivos de produção, em `deploy/`:
-
-| Arquivo | Conteúdo |
+| Caminho | Conteúdo |
 |---|---|
-| `compose.yaml` | `api` (imagem do GHCR, porta só em `127.0.0.1:8080`, JVM limitada a 300 MB de heap) e `caddy` (portas 80 e 443, proxy para a `api`). Sem banco |
-| `Caddyfile` | proxy reverso no endereço de `SITE_ADDRESS` (`:80` para HTTP pelo IP, ou um domínio para HTTPS automático) |
-| `deploy.sh` | script executado na VM pelo workflow |
+| `deploy/k8s/` | Kustomize: Namespace `educare`, Postgres (StatefulSet `postgres:16`, PVC de 10 Gi no `local-path`, Service só interno), API (Deployment e Service `educare-backend`) e Ingress Traefik sem host |
+| `deploy/argocd/application.yaml` | Application `educare`, aplicada uma vez com `kubectl` |
+| `deploy/argocd/image-updater.yaml` | `ImageUpdater` `educare`: estratégia semver, só tags `vX.Y.Z`, write-back direto na Application |
 
 O `docker-compose.yaml` da raiz continua sendo só o ambiente local.
 
+> **Atenção, antes de ter dados reais:**
+> - **Não há backup.** O banco fica no disco local da VM (`local-path`): perder a VM é perder os dados. O backup é uma tarefa separada.
+> - **Nunca exclua o PVC** `data-postgres-0` do namespace `educare`: o `local-path` apaga o diretório dos dados junto.
+> - **Só HTTP.** O Ingress responde em `http://<ip-publico>/`, sem TLS. Enquanto não houver HTTPS (domínio + cert-manager, já previstos comentados em `deploy/k8s/ingress.yaml`), o frontend de produção não deve apontar para o cluster: o BFF mandaria o token e as senhas do login em texto claro.
+
 ### Configuração inicial (manual, uma vez)
 
-O pipeline não roda nada na VM fora do deploy e não cria secrets. Os passos abaixo são feitos à mão. Os comandos locais funcionam no fish e no bash; troque `<ip-publico>` pelo IP público da VM.
+O k3s e o Argo CD já estão instalados na VM. Os passos abaixo são feitos à mão, da sua máquina. Os comandos funcionam no fish e no bash; troque `<ip-publico>` pelo IP público da VM.
 
-**1. Chave de deploy.** Gere uma chave só para o GitHub Actions e autorize-a na VM (use o acesso SSH que você já tem):
+**1. Túnel para o cluster.** A API do Kubernetes (6443) e o Argo CD **nunca** são expostos na internet. Na security list da VCN e no firewall da VM, só as portas 22 e 80 ficam abertas (443 quando houver HTTPS). Copie o kubeconfig da VM uma vez. Ele já aponta para `https://127.0.0.1:6443`:
 
 ```bash
-ssh-keygen -t ed25519 -N '' -C educare-deploy -f ~/.ssh/educare_deploy
-ssh-copy-id -i ~/.ssh/educare_deploy.pub ubuntu@<ip-publico>
+mkdir -p ~/.kube
+ssh ubuntu@<ip-publico> sudo cat /etc/rancher/k3s/k3s.yaml > ~/.kube/educare.yaml
+chmod 600 ~/.kube/educare.yaml
 ```
 
-**2. Chave do host (`known_hosts`).** Obtenha a chave pública do SSH da VM e confira a impressão digital antes de usar. As duas linhas impressas precisam ser iguais:
+Sempre que for operar o cluster, abra o túnel num terminal e deixe-o aberto:
 
 ```bash
-ssh-keyscan -t ed25519 <ip-publico> > ~/educare_known_hosts
-ssh-keygen -lf ~/educare_known_hosts
-ssh ubuntu@<ip-publico> ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
+ssh -N -L 6443:127.0.0.1:6443 ubuntu@<ip-publico>
 ```
 
-**3. Environment `production` e secrets.** O environment só aceita a `main` e as tags `v*`, e é o único lugar com os secrets de SSH:
+Em outro terminal, aponte o `kubectl` para o cluster e confira:
 
 ```bash
-gh api -X PUT repos/manuelaalecio/educare-backend/environments/production -F 'deployment_branch_policy[protected_branches]=false' -F 'deployment_branch_policy[custom_branch_policies]=true'
-gh api -X POST repos/manuelaalecio/educare-backend/environments/production/deployment-branch-policies -f name=main -f type=branch
-gh api -X POST repos/manuelaalecio/educare-backend/environments/production/deployment-branch-policies -f 'name=v*' -f type=tag
-gh secret set SSH_HOST --env production --body <ip-publico>
-gh secret set SSH_USER --env production --body ubuntu
-gh secret set SSH_PRIVATE_KEY --env production < ~/.ssh/educare_deploy
-gh secret set SSH_KNOWN_HOSTS --env production < ~/educare_known_hosts
+set -gx KUBECONFIG ~/.kube/educare.yaml     # no bash: export KUBECONFIG=~/.kube/educare.yaml
+kubectl get nodes
 ```
 
-Depois, apague a cópia local do `known_hosts` (`rm ~/educare_known_hosts`). Guarde a chave `~/.ssh/educare_deploy` ou apague-a: ela só é necessária para cadastrar o secret de novo.
-
-**4. `.env` da VM.** O `~/app/.env` (permissão 600) já tem `DB_HOST`, `DB_PASSWORD` e `SITE_ADDRESS=:80`. Acrescente à mão as variáveis que o profile `prod` exige. O pipeline nunca lê nem altera esse arquivo, e o `compose.yaml` se recusa a subir se faltar alguma:
+Para usar o Argo CD (interface em `https://localhost:8081` e CLI `argocd`), faça um port-forward pelo mesmo túnel e pegue a senha inicial do usuário `admin`:
 
 ```bash
+kubectl -n argocd port-forward svc/argocd-server 8081:443
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d
+argocd login localhost:8081 --username admin --insecure
+```
+
+**2. Namespace e Secret `educare-env`.** O Secret guarda todos os valores sensíveis e nunca é versionado. Crie-o **antes** de registrar a Application:
+
+```bash
+kubectl create namespace educare
 openssl rand -base64 48    # gera um valor para EDUCARE_JWT_SECRET (mínimo de 32 bytes)
-ssh ubuntu@<ip-publico>
-nano ~/app/.env            # na VM: acrescente as três linhas abaixo
-chmod 600 ~/app/.env
+kubectl -n educare create secret generic educare-env \
+  --from-literal=DB_PASSWORD='<senha do banco>' \
+  --from-literal=EDUCARE_JWT_SECRET='<valor gerado acima>' \
+  --from-literal=EDUCARE_ADMIN_PASSWORD='<senha inicial do admin>' \
+  --from-literal=EDUCARE_CORS_ALLOWED_ORIGINS='<origem do frontend, ex. https://educare.exemplo.org>'
 ```
 
-```
-EDUCARE_ADMIN_PASSWORD=<senha inicial do admin>
-EDUCARE_JWT_SECRET=<valor gerado acima>
-EDUCARE_CORS_ALLOWED_ORIGINS=<origem do frontend, ex. https://educare.exemplo.org>
-```
+Se o Secret ou alguma dessas quatro chaves faltar, os pods da API e do Postgres ficam em **`CreateContainerConfigError`** (veja com `kubectl -n educare get pods` e `kubectl -n educare describe pod <nome>`). Nenhum valor padrão é usado no lugar. Para corrigir, crie o Secret, ou recrie-o com todas as chaves, e os pods sobem sozinhos.
 
-**5. Portas e deploy antigo.** Na console da Oracle, libere a entrada TCP nas portas 80 e 443 na security list da VCN da VM. A porta 8080 não precisa ser liberada: ela só atende de dentro da VM. Na VM, pare os containers do deploy manual antigo que ocupem as portas 80 ou 8080 (`docker ps` mostra quais são; pare-os com `docker stop <nome>` e `docker rm <nome>`).
+O banco começa vazio: o Flyway cria o schema e o usuário `admin@educare.org`, com a senha de `EDUCARE_ADMIN_PASSWORD`. Trocar `DB_PASSWORD` no Secret depois que o banco foi criado **não** muda a senha do Postgres (ela só vale na criação do volume). Trocar `EDUCARE_ADMIN_PASSWORD` também não muda o admin já criado.
 
-**6. Label `build` e pacote público.** Crie o label:
+**3. Instalar o Argo CD Image Updater.** Instale a versão fixada no namespace do Argo CD:
 
 ```bash
-gh label create build --color 0E8A16 --description "Publica a imagem no GHCR após o merge na main"
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj-labs/argocd-image-updater/v1.4.0/config/install.yaml
+kubectl -n argocd rollout status deployment argocd-image-updater-controller
 ```
 
-Depois do primeiro merge com o label, a imagem aparece em **github.com/manuelaalecio → Packages → educare-backend**. Em **Package settings → Change visibility**, torne o pacote **público** (a VM baixa a imagem sem login). Para conferir, rode `docker manifest inspect ghcr.io/manuelaalecio/educare-backend:latest` sem estar logado.
+O manifest oficial reserva 512Mi de memória para o Image Updater. Para um único app basta menos, e você pode reduzir a reserva (opcional):
 
-**7. Primeiro deploy.** Crie a tag no commit da `main` que tem imagem publicada:
+```bash
+kubectl -n argocd set resources deployment argocd-image-updater-controller --requests=cpu=50m,memory=128Mi --limits=memory=256Mi
+```
+
+Se o nome do deployment for outro na versão instalada, confira com `kubectl -n argocd get deployments`.
+
+**4. Primeira versão `arm64`.** A Application usa a tag de bootstrap do `kustomization.yaml` (`v0.2.0`), que precisa existir no GHCR antes do registro. Crie a tag num commit da `main` (passo "Publicar uma versão" abaixo) e espere a CI publicar.
+
+O pacote `educare-backend` no GHCR precisa continuar **público**: o cluster e o Image Updater baixam e listam as tags sem credencial. Se ele virar privado, é preciso um Secret de pull no namespace `educare` e uma credencial no Image Updater.
+
+**5. Registrar a Application e o ImageUpdater.** Aplique os dois arquivos uma vez:
+
+```bash
+kubectl apply -f deploy/argocd/application.yaml
+kubectl apply -f deploy/argocd/image-updater.yaml
+argocd app get educare                                    # Sync Status: Synced, Health Status: Healthy
+curl http://<ip-publico>/actuator/health/readiness        # {"status":"UP"}
+```
+
+Os dois arquivos não fazem parte do que o Argo CD sincroniza: quando mudarem no repositório, reaplique-os à mão. A Application não declara `spec.source.kustomize` de propósito, para que o reapply não desfaça a tag gravada pelo Image Updater. Não coloque a Application num app-of-apps: o app pai desfaria essa tag a cada sync.
+
+Se a API não responder pelo IP público com o pod `Running` e `Ready`, confira se a porta 80 está liberada na security list da VCN e no `iptables` da VM. As imagens Ubuntu da Oracle trazem regras que recusam tudo o que não foi liberado, e a regra nova precisa ficar antes da linha `REJECT`:
+
+```bash
+ssh ubuntu@<ip-publico> sudo iptables -L INPUT -n --line-numbers
+ssh ubuntu@<ip-publico> sudo iptables -I INPUT <linha-do-reject> -m state --state NEW -p tcp --dport 80 -j ACCEPT
+ssh ubuntu@<ip-publico> sudo netfilter-persistent save
+```
+
+### Publicar uma versão
+
+Crie uma tag anotada `vX.Y.Z` num commit da `main` e envie:
 
 ```bash
 git switch main
 git pull
-git tag -a v0.1.0 -m v0.1.0
-git push origin v0.1.0
-gh run watch                                   # acompanha o deploy
-curl http://<ip-publico>/actuator/health       # deve conter "status":"UP"
+git tag -a v0.2.1 -m v0.2.1
+git push origin v0.2.1
+gh run watch                                                                  # acompanha a CI
+docker buildx imagetools inspect ghcr.io/manuelaalecio/educare-backend:v0.2.1   # só linux/arm64
 ```
+
+Em alguns minutos o Image Updater leva a Application para a tag nova. Para conferir qual tag o cluster está usando:
+
+```bash
+kubectl -n argocd get application educare -o jsonpath='{.spec.source.kustomize.images}'
+kubectl -n educare get deployment educare-backend -o jsonpath='{.spec.template.spec.containers[0].image}'
+```
+
+As migrations do Flyway rodam no pod novo enquanto o antigo ainda atende. Por isso, uma versão precisa continuar compatível com o schema da versão anterior.
 
 ### Rollback
 
-Dispare o deploy com a tag de uma imagem anterior. As tags disponíveis ficam na página do pacote, e a tag de cada deploy fica no resumo da execução do `deploy.yml`:
+**Fixar uma tag (padrão).** Restrinja o `ImageUpdater` à tag desejada, senão ele volta para a maior `vX.Y.Z` no ciclo seguinte. Depois, aplique a tag na Application sem esperar o ciclo. Nenhum dos dois passos exige commit:
 
 ```bash
-gh workflow run deploy.yml --ref main -f image_tag=<sha7>
+kubectl -n argocd patch imageupdater educare --type json -p '[{"op":"replace","path":"/spec/applicationRefs/0/images/0/commonUpdateSettings/allowTags","value":"regexp:^v0[.]2[.]0$"}]'
+argocd app set educare --kustomize-image ghcr.io/manuelaalecio/educare-backend:v0.2.0
 ```
 
-Na VM, `~/app/deploy.env` mostra a tag em produção. Para repetir o estado atual à mão, rode `docker compose --env-file .env --env-file deploy.env up -d` em `~/app`.
+Para soltar a fixação, depois de publicar a versão com a correção, reaplique o arquivo original:
+
+```bash
+kubectl apply -f deploy/argocd/image-updater.yaml
+```
+
+**Pelo histórico do Argo CD.** O `argocd app rollback` não funciona com o sync automático ligado. Desligue o sync, volte para a revisão escolhida e religue o sync depois:
+
+```bash
+argocd app set educare --sync-policy none
+argocd app history educare
+argocd app rollback educare <id-da-revisao>
+argocd app set educare --sync-policy automated --auto-prune --self-heal
+```
+
+Ao religar o sync, o Image Updater volta para a maior `vX.Y.Z`, a menos que a tag tenha sido fixada antes no `ImageUpdater`, como no rollback padrão. Prefira o rollback padrão, ou publique uma versão nova com a correção.
 
 ## Como o projeto é desenvolvido
 

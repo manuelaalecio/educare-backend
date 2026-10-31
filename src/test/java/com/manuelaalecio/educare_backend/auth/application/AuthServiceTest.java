@@ -2,6 +2,8 @@ package com.manuelaalecio.educare_backend.auth.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -84,12 +86,29 @@ class AuthServiceTest {
 	// changeOwnPassword
 
 	@Test
-	void shouldDelegateToUserServiceWithReceivedIdWhenChangingOwnPassword() {
+	void shouldReturnNewTokenAfterChangingPasswordWhenChangeSucceeds() {
+		// given
+		var issued = new IssuedAccessToken("new.token.value", 28800);
+		when(accessTokenIssuer.issue(ID)).thenReturn(issued);
+
 		// when
-		authService.changeOwnPassword(ID, PASSWORD, "n0v@Senha");
+		IssuedAccessToken token = authService.changeOwnPassword(ID, PASSWORD, "n0v@Senha");
 
 		// then
-		verify(userService).changeOwnPassword(ID, PASSWORD, "n0v@Senha");
+		assertThat(token).isEqualTo(issued);
+		var order = inOrder(userService, accessTokenIssuer);
+		order.verify(userService).changeOwnPassword(ID, PASSWORD, "n0v@Senha");
+		order.verify(accessTokenIssuer).issue(ID);
+	}
+
+	@Test
+	void shouldIssueNoTokenWhenPasswordChangeFails() {
+		// given
+		doThrow(new IllegalStateException("falha")).when(userService).changeOwnPassword(ID, PASSWORD, "n0v@Senha");
+
+		// when / then
+		assertThatThrownBy(() -> authService.changeOwnPassword(ID, PASSWORD, "n0v@Senha"))
+				.isInstanceOf(IllegalStateException.class);
 		verifyNoInteractions(accessTokenIssuer);
 	}
 

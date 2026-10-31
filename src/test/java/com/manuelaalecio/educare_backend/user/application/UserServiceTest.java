@@ -4,12 +4,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -17,15 +21,18 @@ import java.util.UUID;
 import com.manuelaalecio.educare_backend.user.domain.InvalidCurrentPasswordException;
 import com.manuelaalecio.educare_backend.user.domain.LastAdminException;
 import com.manuelaalecio.educare_backend.user.domain.LoginAlreadyInUseException;
+import com.manuelaalecio.educare_backend.user.domain.NewPasswordSameAsCurrentException;
+import com.manuelaalecio.educare_backend.user.domain.NewPasswordSameAsLoginException;
 import com.manuelaalecio.educare_backend.user.domain.Role;
 import com.manuelaalecio.educare_backend.user.domain.SelfDeletionException;
+import com.manuelaalecio.educare_backend.user.domain.TooManyPasswordAttemptsException;
 import com.manuelaalecio.educare_backend.user.domain.User;
 import com.manuelaalecio.educare_backend.user.domain.UserNotFoundException;
 import com.manuelaalecio.educare_backend.user.domain.UserRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -47,6 +54,8 @@ class UserServiceTest {
 	private static final String PASSWORD = "s3nh@Forte";
 	private static final String HASH = "$2a$10$encodedHash";
 	private static final String OLD_HASH = "$2a$10$oldHash";
+	private static final Instant NOW = Instant.parse("2026-03-05T14:30:15.750Z");
+	private static final Instant NOW_IN_SECONDS = Instant.parse("2026-03-05T14:30:15Z");
 
 	@Mock
 	private UserRepository userRepository;
@@ -54,8 +63,16 @@ class UserServiceTest {
 	@Mock
 	private PasswordEncoder passwordEncoder;
 
-	@InjectMocks
+	@Mock
+	private PasswordAttemptLimiter passwordAttemptLimiter;
+
 	private UserService userService;
+
+	@BeforeEach
+	void setUp() {
+		userService = new UserService(userRepository, passwordEncoder, Clock.fixed(NOW, ZoneOffset.UTC),
+				passwordAttemptLimiter);
+	}
 
 	private static User existingUser() {
 		return new User("Ana Souza", "ana.souza@educare.org", OLD_HASH, Role.USER);
@@ -316,7 +333,9 @@ class UserServiceTest {
 		verify(userRepository).saveAndFlush(captor.capture());
 		assertThat(captor.getValue()).isSameAs(user);
 		assertThat(user.getPasswordHash()).isEqualTo(HASH);
+		assertThat(user.getPasswordChangedAt()).isEqualTo(NOW_IN_SECONDS);
 		verify(passwordEncoder).encode(PASSWORD);
+		verifyNoInteractions(passwordAttemptLimiter);
 	}
 
 	@Test
@@ -578,7 +597,12 @@ class UserServiceTest {
 
 		// then
 		assertThat(user.getPasswordHash()).isEqualTo(HASH);
-		verify(userRepository).saveAndFlush(user);
+		assertThat(user.getPasswordChangedAt()).isEqualTo(NOW_IN_SECONDS);
+		var order = inOrder(passwordAttemptLimiter, userRepository);
+		order.verify(passwordAttemptLimiter).ensureAllowed(ID);
+		order.verify(userRepository).saveAndFlush(user);
+		order.verify(passwordAttemptLimiter).reset(ID);
+		verify(passwordAttemptLimiter, never()).recordFailure(any());
 	}
 
 	@Test
@@ -594,9 +618,77 @@ class UserServiceTest {
 				.hasMessage("Senha atual incorreta")
 				.extracting("field").isEqualTo("currentPassword");
 		assertThat(user.getPasswordHash()).isEqualTo(OLD_HASH);
+		assertThat(user.getPasswordChangedAt()).isNull();
 		verify(passwordEncoder, never()).encode(anyString());
 		verify(userRepository, never()).saveAndFlush(any());
 		verify(userRepository, never()).save(any());
+		verify(passwordAttemptLimiter).recordFailure(ID);
+		verify(passwordAttemptLimiter, never()).reset(any());
+	}
+
+	@Test
+	void shouldRejectBeforeCheckingPasswordWhenAttemptsAreExhausted() {
+		// given
+		doThrow(new TooManyPasswordAttemptsException()).when(passwordAttemptLimiter).ensureAllowed(ID);
+
+		// when / then
+		assertThatThrownBy(() -> userService.changeOwnPassword(ID, "senhaAtual1", PASSWORD))
+				.isInstanceOf(TooManyPasswordAttemptsException.class);
+		verifyNoInteractions(passwordEncoder);
+		verify(userRepository, never()).findById(any());
+		verify(userRepository, never()).saveAndFlush(any());
+		verify(passwordAttemptLimiter, never()).recordFailure(any());
+	}
+
+	@Test
+	void shouldRejectWithoutCountingFailureWhenNewPasswordIsCurrentPassword() {
+		// given
+		var user = existingUser();
+		when(userRepository.findById(ID)).thenReturn(Optional.of(user));
+		when(passwordEncoder.matches("senhaAtual1", OLD_HASH)).thenReturn(true);
+
+		// when / then
+		assertThatThrownBy(() -> userService.changeOwnPassword(ID, "senhaAtual1", "senhaAtual1"))
+				.isInstanceOf(NewPasswordSameAsCurrentException.class)
+				.hasMessage("Deve ser diferente da senha atual")
+				.extracting("field").isEqualTo("newPassword");
+		assertThat(user.getPasswordHash()).isEqualTo(OLD_HASH);
+		assertThat(user.getPasswordChangedAt()).isNull();
+		verify(passwordEncoder, never()).encode(anyString());
+		verify(userRepository, never()).saveAndFlush(any());
+		verify(passwordAttemptLimiter, never()).recordFailure(any());
+		verify(passwordAttemptLimiter, never()).reset(any());
+	}
+
+	@Test
+	void shouldRejectWithoutCountingFailureWhenNewPasswordIsLoginInAnotherCase() {
+		// given
+		var user = existingUser();
+		when(userRepository.findById(ID)).thenReturn(Optional.of(user));
+		when(passwordEncoder.matches("senhaAtual1", OLD_HASH)).thenReturn(true);
+
+		// when / then
+		assertThatThrownBy(() -> userService.changeOwnPassword(ID, "senhaAtual1", "Ana.Souza@EDUCARE.org"))
+				.isInstanceOf(NewPasswordSameAsLoginException.class)
+				.hasMessage("Não pode ser igual ao login")
+				.extracting("field").isEqualTo("newPassword");
+		assertThat(user.getPasswordHash()).isEqualTo(OLD_HASH);
+		verify(passwordEncoder, never()).encode(anyString());
+		verify(userRepository, never()).saveAndFlush(any());
+		verify(passwordAttemptLimiter, never()).recordFailure(any());
+	}
+
+	@Test
+	void shouldReportOnlyCurrentPasswordWhenItIsWrongAndNewPasswordIsLogin() {
+		// given
+		var user = existingUser();
+		when(userRepository.findById(ID)).thenReturn(Optional.of(user));
+		when(passwordEncoder.matches("senhaErrada", OLD_HASH)).thenReturn(false);
+
+		// when / then
+		assertThatThrownBy(() -> userService.changeOwnPassword(ID, "senhaErrada", "ana.souza@educare.org"))
+				.isInstanceOf(InvalidCurrentPasswordException.class);
+		verify(passwordAttemptLimiter).recordFailure(ID);
 	}
 
 	@Test

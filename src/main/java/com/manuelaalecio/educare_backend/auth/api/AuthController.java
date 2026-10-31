@@ -5,7 +5,13 @@ import com.manuelaalecio.educare_backend.auth.api.dto.ChangeOwnPasswordRequest;
 import com.manuelaalecio.educare_backend.auth.api.dto.LoginRequest;
 import com.manuelaalecio.educare_backend.auth.api.dto.MeResponse;
 import com.manuelaalecio.educare_backend.auth.application.AuthService;
+import com.manuelaalecio.educare_backend.shared.config.BadRequestResponse;
+import com.manuelaalecio.educare_backend.shared.config.ProblemResponses;
+import com.manuelaalecio.educare_backend.shared.config.TooManyRequestsResponse;
 import com.manuelaalecio.educare_backend.shared.security.AuthenticatedUser;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -37,6 +43,13 @@ public class AuthController {
 	// public: overrides the bearer token declared for the whole API in the OpenAPI document, so that API clients
 	// generated from it do not send an empty Authorization header, which the resource server refuses with 401
 	@SecurityRequirements
+	// runtime no-op: with any @ApiResponse on the method, springdoc only documents the success response, from the
+	// return type, when the status comes from @ResponseStatus
+	@ResponseStatus(HttpStatus.OK)
+	@BadRequestResponse
+	// invalid credentials; the 401 of the protected operations is added to the contract by UnauthorizedResponseCustomizer
+	@ApiResponse(responseCode = "401", description = "Unauthorized", content = @Content(
+			mediaType = ProblemResponses.MEDIA_TYPE, schema = @Schema(ref = ProblemResponses.PROBLEM_DETAIL_REF)))
 	public AccessTokenResponse login(@Valid @RequestBody LoginRequest request) {
 		return authMapper.toResponse(authService.login(request.login(), request.password()));
 	}
@@ -46,11 +59,19 @@ public class AuthController {
 		return authMapper.toResponse(authService.me(user.id()));
 	}
 
+	/**
+	 * Changes the user's own password and returns a new token for the current session: every token issued before,
+	 * including the one of this request, is refused from now on.
+	 */
 	@PutMapping("/me/password")
-	@ResponseStatus(HttpStatus.NO_CONTENT)
-	public void changeOwnPassword(@AuthenticationPrincipal AuthenticatedUser user,
+	// runtime no-op, so that springdoc documents the 200 next to the declared errors (see login)
+	@ResponseStatus(HttpStatus.OK)
+	@BadRequestResponse
+	@TooManyRequestsResponse
+	public AccessTokenResponse changeOwnPassword(@AuthenticationPrincipal AuthenticatedUser user,
 			@Valid @RequestBody ChangeOwnPasswordRequest request) {
-		authService.changeOwnPassword(user.id(), request.currentPassword(), request.newPassword());
+		return authMapper.toResponse(
+				authService.changeOwnPassword(user.id(), request.currentPassword(), request.newPassword()));
 	}
 
 }
