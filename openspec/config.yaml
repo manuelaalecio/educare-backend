@@ -23,6 +23,7 @@ context: |
   - Criança -> Child
   - Responsável -> Guardian
   - Usuário / funcionário -> User
+  - Turma -> Classroom
   - Matrícula -> Enrollment
   - Rematrícula -> Reenrollment
   - Período de rematrícula -> ReenrollmentPeriod
