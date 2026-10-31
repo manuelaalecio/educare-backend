@@ -53,11 +53,11 @@ O access token emitido no login SHALL ser aceito pela API por 8 horas a partir d
 - **THEN** o cabeçalho e o payload do token, decodificados de Base64URL, contêm o `id` dela e não contêm `ana.souza@educare.org`, `Ana Souza` nem a senha
 
 ### Requirement: Consultar os próprios dados
-O sistema SHALL devolver em `GET /api/v1/auth/me`, para qualquer usuário autenticado (`ADMIN` ou `USER`), `200 OK` com os campos `id`, `name`, `login`, `role`, `createdAt` e `updatedAt` do próprio usuário do token, sem senha nem hash. Sem token válido, SHALL responder `401 Unauthorized`.
+O sistema SHALL devolver em `GET /api/v1/auth/me`, para qualquer usuário autenticado (`COORDENADOR` ou `EDUCADOR`), `200 OK` com os campos `id`, `name`, `login`, `role`, `createdAt` e `updatedAt` do próprio usuário do token, sem senha nem hash. Sem token válido, SHALL responder `401 Unauthorized`.
 
 #### Scenario: USER consulta os próprios dados
-- **WHEN** a usuária `ana.souza@educare.org`, de nome `Ana Souza` e role `USER`, envia `GET /api/v1/auth/me` com o token dela
-- **THEN** a resposta é `200 OK` com o `id` dela, `"name": "Ana Souza"`, `"login": "ana.souza@educare.org"`, `"role": "USER"`, `createdAt` e `updatedAt`, e o corpo não tem a propriedade `password`
+- **WHEN** a usuária `ana.souza@educare.org`, de nome `Ana Souza` e role `EDUCADOR`, envia `GET /api/v1/auth/me` com o token dela
+- **THEN** a resposta é `200 OK` com o `id` dela, `"name": "Ana Souza"`, `"login": "ana.souza@educare.org"`, `"role": "EDUCADOR"`, `createdAt` e `updatedAt`, e o corpo não tem a propriedade `password`
 
 #### Scenario: Consulta sem token
 - **WHEN** um cliente envia `GET /api/v1/auth/me` sem o header `Authorization`

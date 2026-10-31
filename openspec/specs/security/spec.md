@@ -45,7 +45,7 @@ No profile `dev`, o sistema SHALL publicar o documento OpenAPI em `/v3/api-docs`
 - **THEN** a resposta é `401 Unauthorized`, como numa rota inexistente
 
 ### Requirement: Token recusado quando inválido ou de usuário inexistente
-O sistema SHALL recusar com `401 Unauthorized` e um `ProblemDetail` o token malformado, com assinatura que não corresponde à chave do sistema, expirado, cujo usuário não existe mais ou emitido antes da última troca de senha do usuário (troca da própria senha ou redefinição por um `ADMIN`). A comparação com a troca de senha SHALL ser feita em segundos inteiros, a mesma precisão da data de emissão do token: o token emitido no mesmo segundo da troca continua aceito. O token de um usuário sem troca de senha registrada SHALL ser aceito normalmente. A recusa SHALL valer já na primeira requisição depois da troca. A resposta SHALL NOT indicar qual desses motivos causou a recusa.
+O sistema SHALL recusar com `401 Unauthorized` e um `ProblemDetail` o token malformado, com assinatura que não corresponde à chave do sistema, expirado, cujo usuário não existe mais ou emitido antes da última troca de senha do usuário (troca da própria senha ou redefinição por um `COORDENADOR`). A comparação com a troca de senha SHALL ser feita em segundos inteiros, a mesma precisão da data de emissão do token: o token emitido no mesmo segundo da troca continua aceito. O token de um usuário sem troca de senha registrada SHALL ser aceito normalmente. A recusa SHALL valer já na primeira requisição depois da troca. A resposta SHALL NOT indicar qual desses motivos causou a recusa.
 
 #### Scenario: Token malformado
 - **WHEN** um cliente envia `GET /api/v1/auth/me` com `Authorization: Bearer abc.def`
@@ -56,7 +56,7 @@ O sistema SHALL recusar com `401 Unauthorized` e um `ProblemDetail` o token malf
 - **THEN** a resposta é `401 Unauthorized`
 
 #### Scenario: Token de usuário excluído
-- **WHEN** a usuária `ana.souza@educare.org` faz login, é excluída por um `ADMIN` e depois envia `GET /api/v1/auth/me` com o token que recebeu no login
+- **WHEN** a usuária `ana.souza@educare.org` faz login, é excluída por um `COORDENADOR` e depois envia `GET /api/v1/auth/me` com o token que recebeu no login
 - **THEN** a resposta é `401 Unauthorized`
 
 #### Scenario: Token de usuário existente
@@ -79,15 +79,15 @@ O sistema SHALL recusar com `401 Unauthorized` e um `ProblemDetail` o token malf
 O sistema SHALL decidir o acesso pela role que o usuário tem no momento da requisição, e não pela role que ele tinha quando o token foi emitido. Quando o usuário está autenticado mas a role dele não permite a operação, o sistema SHALL responder `403 Forbidden` com `Content-Type: application/problem+json`, sem executar a operação.
 
 #### Scenario: USER em rota de ADMIN
-- **WHEN** a usuária `ana.souza@educare.org`, com role `USER`, envia `GET /api/v1/users` com o token dela
+- **WHEN** a usuária `ana.souza@educare.org`, com role `EDUCADOR`, envia `GET /api/v1/users` com o token dela
 - **THEN** a resposta é `403 Forbidden` com `Content-Type: application/problem+json`
 
 #### Scenario: Rebaixamento vale no mesmo token
-- **WHEN** existem os `ADMIN` `admin@educare.org` e `bruno.lima@educare.org`, Bruno faz login, e `admin@educare.org` altera a role de Bruno para `USER`
+- **WHEN** existem os `COORDENADOR` `admin@educare.org` e `bruno.lima@educare.org`, Bruno faz login, e `admin@educare.org` altera a role de Bruno para `EDUCADOR`
 - **THEN** a requisição seguinte de Bruno a `GET /api/v1/users`, com o token que ele recebeu antes da alteração, responde `403 Forbidden`
 
 #### Scenario: Promoção vale no mesmo token
-- **WHEN** a usuária `ana.souza@educare.org`, com role `USER`, faz login, e um `ADMIN` altera a role dela para `ADMIN`
+- **WHEN** a usuária `ana.souza@educare.org`, com role `EDUCADOR`, faz login, e um `COORDENADOR` altera a role dela para `COORDENADOR`
 - **THEN** a requisição seguinte de Ana a `GET /api/v1/users`, com o token que ela recebeu antes da alteração, responde `200 OK`
 
 ### Requirement: Chave de assinatura obrigatória em produção
@@ -117,7 +117,7 @@ O sistema SHALL permitir chamadas de navegador (CORS) só das origens configurad
 - **THEN** a resposta é `403 Forbidden` e não tem o header `Access-Control-Allow-Origin`
 
 #### Scenario: Header Location exposto
-- **WHEN** as origens configuradas são `https://educare.example.org`, e um `ADMIN` cria um usuário com `POST /api/v1/users` e `Origin: https://educare.example.org`
+- **WHEN** as origens configuradas são `https://educare.example.org`, e um `COORDENADOR` cria um usuário com `POST /api/v1/users` e `Origin: https://educare.example.org`
 - **THEN** a resposta é `201 Created`, com `Access-Control-Allow-Origin: https://educare.example.org` e `Access-Control-Expose-Headers` incluindo `Location`
 
 #### Scenario: Produção sem origens
@@ -129,14 +129,14 @@ O sistema SHALL permitir chamadas de navegador (CORS) só das origens configurad
 - **THEN** a inicialização falha
 
 ### Requirement: Actuator restrito ao health, sem detalhes
-O sistema SHALL expor pela web, entre os endpoints do Actuator, só o health (`/actuator/health`), em todos os profiles. A resposta do health SHALL conter só o status agregado (`"status":"UP"` quando a aplicação está saudável) e, opcionalmente, a lista `groups` com os nomes dos grupos de health disponíveis, sem componentes, detalhes nem informações de infraestrutura (banco, disco, versões), com ou sem token. Os grupos `liveness` e `readiness` SHALL estar disponíveis sem token em `/actuator/health/liveness` e `/actuator/health/readiness` em todos os profiles, inclusive no `prod`, independentemente de a aplicação detectar que roda num cluster Kubernetes, respondendo também só o status. Enquanto a aplicação recusa tráfego (por exemplo, durante o desligamento), a readiness SHALL responder `503 Service Unavailable` com o status `OUT_OF_SERVICE`, e a liveness SHALL continuar respondendo `200 OK` com `UP` enquanto a aplicação estiver funcional. Os demais endpoints do Actuator (por exemplo `/actuator/env`, `/actuator/info`, `/actuator/beans`, `/actuator/metrics`) e os caminhos de componentes do health (por exemplo `/actuator/health/db`) SHALL NOT existir: sem token respondem como qualquer rota inexistente (`401 Unauthorized`), e com um token válido, inclusive de `ADMIN`, respondem `404 Not Found` sem revelar conteúdo do endpoint.
+O sistema SHALL expor pela web, entre os endpoints do Actuator, só o health (`/actuator/health`), em todos os profiles. A resposta do health SHALL conter só o status agregado (`"status":"UP"` quando a aplicação está saudável) e, opcionalmente, a lista `groups` com os nomes dos grupos de health disponíveis, sem componentes, detalhes nem informações de infraestrutura (banco, disco, versões), com ou sem token. Os grupos `liveness` e `readiness` SHALL estar disponíveis sem token em `/actuator/health/liveness` e `/actuator/health/readiness` em todos os profiles, inclusive no `prod`, independentemente de a aplicação detectar que roda num cluster Kubernetes, respondendo também só o status. Enquanto a aplicação recusa tráfego (por exemplo, durante o desligamento), a readiness SHALL responder `503 Service Unavailable` com o status `OUT_OF_SERVICE`, e a liveness SHALL continuar respondendo `200 OK` com `UP` enquanto a aplicação estiver funcional. Os demais endpoints do Actuator (por exemplo `/actuator/env`, `/actuator/info`, `/actuator/beans`, `/actuator/metrics`) e os caminhos de componentes do health (por exemplo `/actuator/health/db`) SHALL NOT existir: sem token respondem como qualquer rota inexistente (`401 Unauthorized`), e com um token válido, inclusive de `COORDENADOR`, respondem `404 Not Found` sem revelar conteúdo do endpoint.
 
 #### Scenario: Health responde só o status
 - **WHEN** um cliente envia `GET /actuator/health` sem o header `Authorization`, com a aplicação e o banco disponíveis
 - **THEN** a resposta é `200 OK` com o corpo JSON contendo a propriedade `status` com o valor `UP` e, além dela, no máximo a lista `groups` com os nomes `liveness` e `readiness`, sem as propriedades `components` e `details`
 
 #### Scenario: Health com token também não mostra detalhes
-- **WHEN** um usuário com role `ADMIN` envia `GET /actuator/health` com um token válido
+- **WHEN** um usuário com role `COORDENADOR` envia `GET /actuator/health` com um token válido
 - **THEN** a resposta é `200 OK` com o mesmo corpo da resposta sem token: `status` com o valor `UP` e, no máximo, a lista `groups`, sem `components` e `details`
 
 #### Scenario: Probes de liveness e readiness públicos
@@ -152,7 +152,7 @@ O sistema SHALL expor pela web, entre os endpoints do Actuator, só o health (`/
 - **THEN** a readiness responde `503 Service Unavailable` com o corpo JSON contendo só a propriedade `status` com o valor `OUT_OF_SERVICE`, e a liveness responde `200 OK` com o corpo contendo só `status` com o valor `UP`
 
 #### Scenario: Endpoint do Actuator não exposto, com token de ADMIN
-- **WHEN** um usuário com role `ADMIN` envia `GET /actuator/env` com um token válido
+- **WHEN** um usuário com role `COORDENADOR` envia `GET /actuator/env` com um token válido
 - **THEN** a resposta é `404 Not Found` e o corpo não contém nenhuma propriedade ou variável de ambiente da aplicação
 
 #### Scenario: Endpoint do Actuator não exposto, sem token
@@ -160,5 +160,5 @@ O sistema SHALL expor pela web, entre os endpoints do Actuator, só o health (`/
 - **THEN** a resposta é `401 Unauthorized`, sem revelar se o endpoint existe
 
 #### Scenario: Componente do health não exposto
-- **WHEN** um usuário com role `ADMIN` envia `GET /actuator/health/db` com um token válido
+- **WHEN** um usuário com role `COORDENADOR` envia `GET /actuator/health/db` com um token válido
 - **THEN** a resposta é `404 Not Found` e o corpo não contém o status nem detalhes do banco

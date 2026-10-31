@@ -31,7 +31,7 @@ A escola se organiza em coordenadores(as) e educadores(as), mas a API só conhec
 
 ### Modified Capabilities
 - `user`: valores aceitos e padrão da role, migração das roles existentes, acesso restrito a `COORDENADOR`, regra de ao menos um `COORDENADOR` (com a nova mensagem do `409`) e o administrador inicial com a função `COORDENADOR`.
-- `security`: os cenários de role vigente e de token recusado passam a usar `COORDENADOR`/`EDUCADOR`.
+- `security`: os cenários de role vigente, de token recusado, de CORS e do Actuator passam a usar `COORDENADOR`/`EDUCADOR`.
 - `classroom`: gestão de turmas restrita a `COORDENADOR`.
 - `auth`: `GET /api/v1/auth/me` vale para `COORDENADOR` e `EDUCADOR`, e devolve a role nova.
 - `persistence`: os cenários de autoria passam a usar os nomes novos (sem mudança na regra).
@@ -46,5 +46,5 @@ A mudança atravessa módulos porque a role é do módulo `user`, mas é usada n
 - **Banco**: nova migration `V7__rename_roles_to_coordinator_educator.sql`. Nenhuma migration existente é editada (a `V2` e a `V3` continuam com `ADMIN`/`USER`, e a `V7` converte o que elas criaram).
 - **Testes**: praticamente toda a suíte que cria usuários ou tokens (`TestUsers`, `AccessTokens`, testes de `user`, `auth`, `classroom`, `shared/security` e `shared/persistence`) troca os valores.
 - **Deploy**: nenhuma variável nova. O deploy precisa ser coordenado com o front e feito num horário sem uso (ver design, decisão sobre a compatibilidade da migration).
-- **Outras changes**: `add-child-crud` (proposta, não implementada) cita `ADMIN`/`USER` na spec e no design e precisa ser atualizada antes de ser implementada. `migrate-deploy-to-gitops` (em andamento) modifica o requirement do Actuator em `security`, que cita `ADMIN` só de passagem; esta change não mexe nesse requirement para não conflitar.
+- **Outras changes**: `add-child-crud` (proposta, não implementada) citava `ADMIN`/`USER` e foi atualizada para os valores novos. `migrate-deploy-to-gitops` foi arquivada antes desta, então o requirement do Actuator em `security`, que ela modificou, entra no delta desta change já na versão arquivada.
 - **Documentação**: CLAUDE.md (exemplo de `@PreAuthorize` e a descrição do administrador inicial) e o README, se citarem a role.

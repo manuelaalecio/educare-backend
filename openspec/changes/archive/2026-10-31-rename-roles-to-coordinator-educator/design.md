@@ -100,8 +100,8 @@ Isso contraria a regra de migrations compatíveis com a versão anterior (CLAUDE
 - [Janela de `500` no rolling update (D5)] → Deploy num horário sem uso, junto com o front. A janela termina sozinha quando o pod antigo sai.
 - [Rollback para a imagem anterior depois da `V7`] → A imagem antiga não entende os valores novos e responde `500`. O rollback de código exige reverter os dados à mão (ver Migration Plan). O Flyway não tem `undo` nem `clean`.
 - [Front e back fora de sincronia] → Com só o back novo, o front antigo esconde Configurações de todos. Com só o front novo, ninguém vê Configurações. Os dois sobem na mesma janela.
-- [Change `add-child-crud` escrita com `ADMIN`/`USER`] → A spec e o design dela são revisados antes do apply dela: exclusão restrita a `COORDENADOR`, acesso de `COORDENADOR` e `EDUCADOR`.
-- [Requirement do Actuator em `security` ainda cita `ADMIN`] → Fica de fora desta change porque `migrate-deploy-to-gitops` o modifica. A menção é atualizada na change que for arquivada por último (task 6).
+- [Change `add-child-crud` escrita com `ADMIN`/`USER`] → A spec, o design, as tasks e o proposal dela foram atualizados nesta change: exclusão restrita a `COORDENADOR`, acesso de `COORDENADOR` e `EDUCADOR`.
+- [Requirement do Actuator em `security` cita `ADMIN`] → Como `migrate-deploy-to-gitops` foi arquivada antes, o delta desta change modifica esse requirement a partir da versão já arquivada, sem conflito.
 - [Constantes do enum em português contra a convenção de código em inglês (D1)] → A exceção vale só para os valores da role e está registrada aqui e no glossário.
 
 ## Migration Plan

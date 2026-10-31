@@ -79,7 +79,7 @@ Todo registro de negócio SHALL guardar a data e hora de criação e a da últim
 ### Requirement: Autoria dos registros
 Todo registro de negócio SHALL guardar o id do usuário autenticado que o criou e o id do usuário autenticado que o alterou por último, preenchidos pelo sistema a partir do usuário da requisição. Na primeira gravação, os dois SHALL ser o usuário da requisição; a cada alteração gravada, só o autor da última alteração SHALL mudar, e o autor da criação SHALL NOT mudar depois da primeira gravação. Uma requisição recusada, que não grava nada, SHALL NOT alterar a autoria. Um registro gravado sem usuário autenticado SHALL ficar sem autor da criação e sem autor da alteração. A exclusão do usuário autor SHALL NOT alterar a autoria dos registros dele nem ser impedida por ela. A autoria SHALL NOT aparecer nas respostas da API.
 
-Nos cenários abaixo, `admin@educare.org` e `bruno.lima@educare.org` têm role `ADMIN`, e `ana.souza@educare.org` tem role `USER`.
+Nos cenários abaixo, `admin@educare.org` e `bruno.lima@educare.org` têm role `COORDENADOR`, e `ana.souza@educare.org` tem role `EDUCADOR`.
 
 #### Scenario: Criação registra o usuário autenticado
 - **WHEN** `admin@educare.org` cria o usuário `ana.souza@educare.org` com `POST /api/v1/users`
@@ -94,7 +94,7 @@ Nos cenários abaixo, `admin@educare.org` e `bruno.lima@educare.org` têm role `
 - **THEN** a resposta é `204 No Content`, e o registro passa a ter `ana.souza@educare.org` como autor da última alteração, com `admin@educare.org` ainda como autor da criação
 
 #### Scenario: Requisição recusada não muda a autoria
-- **WHEN** o usuário `ana.souza@educare.org` foi criado e alterado por último por `admin@educare.org`, e `bruno.lima@educare.org` tenta alterá-lo com `{"name": "", "login": "ana", "role": "USER"}`
+- **WHEN** o usuário `ana.souza@educare.org` foi criado e alterado por último por `admin@educare.org`, e `bruno.lima@educare.org` tenta alterá-lo com `{"name": "", "login": "ana", "role": "EDUCADOR"}`
 - **THEN** a resposta é `400 Bad Request`, e o registro continua com `admin@educare.org` como autor da criação e da última alteração
 
 #### Scenario: Tentativa de alterar o autor da criação é ignorada
