@@ -129,7 +129,7 @@ O sistema SHALL permitir chamadas de navegador (CORS) só das origens configurad
 - **THEN** a inicialização falha
 
 ### Requirement: Actuator restrito ao health, sem detalhes
-O sistema SHALL expor pela web, entre os endpoints do Actuator, só o health (`/actuator/health`), em todos os profiles. A resposta do health SHALL conter só o status agregado (`"status":"UP"` quando a aplicação está saudável) e, opcionalmente, a lista `groups` com os nomes dos grupos de health disponíveis, sem componentes, detalhes nem informações de infraestrutura (banco, disco, versões), com ou sem token. Os grupos `liveness` e `readiness` SHALL estar disponíveis sem token em `/actuator/health/liveness` e `/actuator/health/readiness`, respondendo também só o status. Os demais endpoints do Actuator (por exemplo `/actuator/env`, `/actuator/info`, `/actuator/beans`, `/actuator/metrics`) e os caminhos de componentes do health (por exemplo `/actuator/health/db`) SHALL NOT existir: sem token respondem como qualquer rota inexistente (`401 Unauthorized`), e com um token válido, inclusive de `ADMIN`, respondem `404 Not Found` sem revelar conteúdo do endpoint.
+O sistema SHALL expor pela web, entre os endpoints do Actuator, só o health (`/actuator/health`), em todos os profiles. A resposta do health SHALL conter só o status agregado (`"status":"UP"` quando a aplicação está saudável) e, opcionalmente, a lista `groups` com os nomes dos grupos de health disponíveis, sem componentes, detalhes nem informações de infraestrutura (banco, disco, versões), com ou sem token. Os grupos `liveness` e `readiness` SHALL estar disponíveis sem token em `/actuator/health/liveness` e `/actuator/health/readiness` em todos os profiles, inclusive no `prod`, independentemente de a aplicação detectar que roda num cluster Kubernetes, respondendo também só o status. Enquanto a aplicação recusa tráfego (por exemplo, durante o desligamento), a readiness SHALL responder `503 Service Unavailable` com o status `OUT_OF_SERVICE`, e a liveness SHALL continuar respondendo `200 OK` com `UP` enquanto a aplicação estiver funcional. Os demais endpoints do Actuator (por exemplo `/actuator/env`, `/actuator/info`, `/actuator/beans`, `/actuator/metrics`) e os caminhos de componentes do health (por exemplo `/actuator/health/db`) SHALL NOT existir: sem token respondem como qualquer rota inexistente (`401 Unauthorized`), e com um token válido, inclusive de `ADMIN`, respondem `404 Not Found` sem revelar conteúdo do endpoint.
 
 #### Scenario: Health responde só o status
 - **WHEN** um cliente envia `GET /actuator/health` sem o header `Authorization`, com a aplicação e o banco disponíveis
@@ -142,6 +142,14 @@ O sistema SHALL expor pela web, entre os endpoints do Actuator, só o health (`/
 #### Scenario: Probes de liveness e readiness públicos
 - **WHEN** um cliente envia `GET /actuator/health/liveness` e `GET /actuator/health/readiness` sem o header `Authorization`, com a aplicação pronta
 - **THEN** cada resposta é `200 OK` com o corpo JSON contendo só a propriedade `status` com o valor `UP`
+
+#### Scenario: Probes disponíveis no profile prod
+- **WHEN** a aplicação inicia com o profile `prod`, todas as variáveis obrigatórias válidas e sem nenhuma variável de ambiente do Kubernetes (`KUBERNETES_SERVICE_HOST` ausente), e um cliente envia `GET /actuator/health/liveness` e `GET /actuator/health/readiness` sem o header `Authorization`
+- **THEN** cada resposta é `200 OK` com o corpo JSON contendo só a propriedade `status` com o valor `UP`
+
+#### Scenario: Readiness recusa tráfego sem derrubar a liveness
+- **WHEN** a aplicação passa a recusar tráfego (estado de readiness `REFUSING_TRAFFIC`, como no início do desligamento) e um cliente envia `GET /actuator/health/readiness` e `GET /actuator/health/liveness` sem o header `Authorization`
+- **THEN** a readiness responde `503 Service Unavailable` com o corpo JSON contendo só a propriedade `status` com o valor `OUT_OF_SERVICE`, e a liveness responde `200 OK` com o corpo contendo só `status` com o valor `UP`
 
 #### Scenario: Endpoint do Actuator não exposto, com token de ADMIN
 - **WHEN** um usuário com role `ADMIN` envia `GET /actuator/env` com um token válido
