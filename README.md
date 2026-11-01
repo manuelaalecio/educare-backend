@@ -178,22 +178,24 @@ Arquivos de produção:
 
 | Caminho | Conteúdo |
 |---|---|
-| `deploy/k8s/` | Kustomize: Namespace `educare`, Postgres (StatefulSet `postgres:16`, PVC de 10 Gi no `local-path`, Service só interno), API (Deployment e Service `educare-backend`) e Ingress Traefik sem host |
+| `deploy/k8s/` | Kustomize: Namespace `educare`, Postgres (StatefulSet `postgres:16`, PVC de 10 Gi no `local-path`, Service só interno), API (Deployment e Service `educare-backend`), Ingress Traefik com host `136-248-80-75.sslip.io` e TLS (`ingress.yaml`) e o redirect de HTTP para HTTPS (`ingress-http.yaml` e `middleware-redirect-https.yaml`) |
 | `deploy/argocd/application.yaml` | Application `educare`, aplicada uma vez com `kubectl` |
 | `deploy/argocd/image-updater.yaml` | `ImageUpdater` `educare`: estratégia semver, só tags `vX.Y.Z`, write-back direto na Application |
+| `deploy/cert-manager/cluster-issuers.yaml` | ClusterIssuers `letsencrypt-staging` e `letsencrypt` (ACME HTTP-01 pelo Traefik), aplicados uma vez com `kubectl` |
 
 O `docker-compose.yaml` da raiz continua sendo só o ambiente local.
 
 > **Atenção, antes de ter dados reais:**
 > - **Não há backup.** O banco fica no disco local da VM (`local-path`): perder a VM é perder os dados. O backup é uma tarefa separada.
 > - **Nunca exclua o PVC** `data-postgres-0` do namespace `educare`: o `local-path` apaga o diretório dos dados junto.
-> - **Só HTTP.** O Ingress responde em `http://<ip-publico>/`, sem TLS. Enquanto não houver HTTPS (domínio + cert-manager, já previstos comentados em `deploy/k8s/ingress.yaml`), o frontend de produção não deve apontar para o cluster: o BFF mandaria o token e as senhas do login em texto claro.
+> - **Só dados fictícios até o backup.** A API responde em `https://136-248-80-75.sslip.io`, com certificado da Let's Encrypt, e o front de produção pode apontar para ela. Mas, até existir o backup do Postgres, o cluster só recebe dados fictícios.
+> - **Só pelo nome sslip.io.** O HTTP desse nome é redirecionado para HTTPS. O acesso pelo IP puro (`http://<ip-publico>/`) dá `404` do Traefik, porque o Ingress só atende o host.
 
 ### Configuração inicial (manual, uma vez)
 
-O k3s e o Argo CD já estão instalados na VM. Os passos abaixo são feitos à mão, da sua máquina. Os comandos funcionam no fish e no bash; troque `<ip-publico>` pelo IP público da VM.
+O k3s e o Argo CD já estão instalados na VM. Os passos abaixo são feitos à mão, da sua máquina. Os comandos funcionam no fish e no bash; troque `<ip-publico>` pelo IP público da VM (hoje `136.248.80.75`, que dá o nome `136-248-80-75.sslip.io`).
 
-**1. Túnel para o cluster.** A API do Kubernetes (6443) e o Argo CD **nunca** são expostos na internet. Na security list da VCN e no firewall da VM, só as portas 22 e 80 ficam abertas (443 quando houver HTTPS). Copie o kubeconfig da VM uma vez. Ele já aponta para `https://127.0.0.1:6443`:
+**1. Túnel para o cluster.** A API do Kubernetes (6443) e o Argo CD **nunca** são expostos na internet. Na security list da VCN e no firewall da VM, só as portas 22, 80 e 443 ficam abertas. A 80 continua necessária para o desafio HTTP-01 da Let's Encrypt e para o redirect. Copie o kubeconfig da VM uma vez. Ele já aponta para `https://127.0.0.1:6443`:
 
 ```bash
 mkdir -p ~/.kube
@@ -253,28 +255,71 @@ kubectl -n argocd set resources deployment argocd-image-updater-controller --req
 
 Se o nome do deployment for outro na versão instalada, confira com `kubectl -n argocd get deployments`.
 
-**4. Primeira versão `arm64`.** A Application usa a tag de bootstrap do `kustomization.yaml` (`v0.2.0`), que precisa existir no GHCR antes do registro. Crie a tag num commit da `main` (passo "Publicar uma versão" abaixo) e espere a CI publicar.
+**4. Instalar o cert-manager e os ClusterIssuers.** O cert-manager emite e renova o certificado HTTPS da API. Instale a versão fixada e espere os três Deployments:
+
+```bash
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.21.3/cert-manager.yaml
+kubectl -n cert-manager rollout status deployment cert-manager
+kubectl -n cert-manager rollout status deployment cert-manager-webhook
+kubectl -n cert-manager rollout status deployment cert-manager-cainjector
+```
+
+Depois aplique os dois ClusterIssuers da Let's Encrypt (`letsencrypt-staging` e `letsencrypt`) e confira que os dois ficam `READY True`:
+
+```bash
+kubectl apply -f deploy/cert-manager/cluster-issuers.yaml
+kubectl get clusterissuer
+```
+
+Assim como a Application, nem o cert-manager nem os ClusterIssuers fazem parte do que o Argo CD sincroniza. Quando o arquivo mudar no repositório, reaplique-o à mão. Para atualizar o cert-manager, aplique o manifesto da versão nova e troque a versão aqui. O cert-manager usa uns 100 a 200 MB de RAM no nó. A emissão do certificado e a troca de staging para produção estão em "HTTPS", abaixo.
+
+**5. Primeira versão `arm64`.** A Application usa a tag de bootstrap do `kustomization.yaml` (`v0.2.0`), que precisa existir no GHCR antes do registro. Crie a tag num commit da `main` (passo "Publicar uma versão" abaixo) e espere a CI publicar.
 
 O pacote `educare-backend` no GHCR precisa continuar **público**: o cluster e o Image Updater baixam e listam as tags sem credencial. Se ele virar privado, é preciso um Secret de pull no namespace `educare` e uma credencial no Image Updater.
 
-**5. Registrar a Application e o ImageUpdater.** Aplique os dois arquivos uma vez:
+**6. Registrar a Application e o ImageUpdater.** Aplique os dois arquivos uma vez:
 
 ```bash
 kubectl apply -f deploy/argocd/application.yaml
 kubectl apply -f deploy/argocd/image-updater.yaml
 argocd app get educare                                    # Sync Status: Synced, Health Status: Healthy
-curl http://<ip-publico>/actuator/health/readiness        # {"status":"UP"}
+curl https://136-248-80-75.sslip.io/actuator/health/readiness   # {"status":"UP"} (use -k enquanto o issuer for o de staging)
 ```
 
 Os dois arquivos não fazem parte do que o Argo CD sincroniza: quando mudarem no repositório, reaplique-os à mão. A Application não declara `spec.source.kustomize` de propósito, para que o reapply não desfaça a tag gravada pelo Image Updater. Não coloque a Application num app-of-apps: o app pai desfaria essa tag a cada sync.
 
-Se a API não responder pelo IP público com o pod `Running` e `Ready`, confira se a porta 80 está liberada na security list da VCN e no `iptables` da VM. As imagens Ubuntu da Oracle trazem regras que recusam tudo o que não foi liberado, e a regra nova precisa ficar antes da linha `REJECT`:
+Se a API não responder pelo nome sslip.io com o pod `Running` e `Ready`, confira se as portas 80 e 443 estão liberadas na security list da VCN e no `iptables` da VM. As imagens Ubuntu da Oracle trazem regras que recusam tudo o que não foi liberado, e a regra nova precisa ficar antes da linha `REJECT` (repita para a 443):
 
 ```bash
 ssh ubuntu@<ip-publico> sudo iptables -L INPUT -n --line-numbers
 ssh ubuntu@<ip-publico> sudo iptables -I INPUT <linha-do-reject> -m state --state NEW -p tcp --dport 80 -j ACCEPT
 ssh ubuntu@<ip-publico> sudo netfilter-persistent save
 ```
+
+### HTTPS
+
+A API responde em `https://136-248-80-75.sslip.io`. O [sslip.io](https://sslip.io) resolve esse nome para o IP `136.248.80.75`, sem cadastro. O TLS termina no Traefik, e dentro do cluster a API continua em HTTP. Dois Ingresses atendem o host:
+
+- `educare-backend` (`deploy/k8s/ingress.yaml`), no entrypoint `websecure` (443): serve a API com o certificado do Secret `educare-backend-tls`. O cert-manager emite e renova esse certificado pelo ClusterIssuer da anotação `cert-manager.io/cluster-issuer`.
+- `educare-backend-http` (`deploy/k8s/ingress-http.yaml`), no entrypoint `web` (80): responde `308` para a mesma URL em HTTPS, pelo Middleware `redirect-https`. O desafio HTTP-01 (`/.well-known/acme-challenge/...`) não é redirecionado, porque o Ingress temporário do cert-manager tem regra mais específica.
+
+Para conferir o certificado:
+
+```bash
+kubectl -n educare get certificate                                   # educare-backend-tls  READY True
+kubectl -n educare describe certificate educare-backend-tls          # Not After e Renewal Time (renovação ~30 dias antes)
+kubectl -n educare describe challenge                                # só existe durante a emissão; mostra o motivo de uma falha
+echo | openssl s_client -connect 136-248-80-75.sslip.io:443 -servername 136-248-80-75.sslip.io 2>/dev/null | openssl x509 -noout -issuer -dates
+curl -I http://136-248-80-75.sslip.io/actuator/health                # 308, Location: https://...
+```
+
+**Staging antes de produção.** A Let's Encrypt limita a quantidade de emissões de produção. Por isso, todo host novo (ou uma emissão do zero) começa com `cert-manager.io/cluster-issuer: letsencrypt-staging`. O certificado de staging não é confiável (o emissor tem `(STAGING)`; teste com `curl -k`). Só depois de o Certificate ficar `READY True`, um PR troca a anotação para `letsencrypt`. Com o merge, o Argo CD sincroniza e o cert-manager reemite o certificado no mesmo Secret. Se em alguns minutos o emissor continuar o de staging, force a reemissão:
+
+```bash
+kubectl -n educare delete secret educare-backend-tls
+```
+
+**Se o IP ou o domínio mudar** (VM recriada ou domínio próprio), troque o host nos dois Ingresses, a `EDUCARE_API_URL` do front na Vercel e, se a origem do front mudar, o `EDUCARE_CORS_ALLOWED_ORIGINS` do Secret `educare-env`. Para um host novo, comece de novo pelo staging.
 
 ### Publicar uma versão
 
@@ -339,6 +384,25 @@ SQL
 ```
 
 O front precisa voltar junto para a versão que espera `ADMIN`/`USER`.
+
+**Voltar para só HTTP (se o certificado não for emitido).** Use quando o Certificate não chega a `READY True`, por exemplo porque o desafio HTTP-01 falhou ou o sslip.io está fora do ar:
+
+1. Na `main`, reverta o commit (ou os commits) que mudou `deploy/k8s/ingress.yaml` e criou `ingress-http.yaml` e `middleware-redirect-https.yaml`, num PR (`git revert <sha>`). Depois do merge, o Argo CD sincroniza sozinho (ou rode `argocd app sync educare`). Com o `prune`, o Middleware e o `educare-backend-http` somem, e o `educare-backend` volta a não ter host.
+2. Apague o que sobrou da emissão:
+
+   ```bash
+   kubectl -n educare delete certificate educare-backend-tls --ignore-not-found
+   kubectl -n educare delete secret educare-backend-tls --ignore-not-found
+   ```
+
+3. Se for o caso, remova os ClusterIssuers e o cert-manager, na mesma versão instalada:
+
+   ```bash
+   kubectl delete -f deploy/cert-manager/cluster-issuers.yaml
+   kubectl delete -f https://github.com/cert-manager/cert-manager/releases/download/v1.21.3/cert-manager.yaml
+   ```
+
+4. Confira: `curl http://<ip-publico>/actuator/health` responde `{"status":"UP"}`. O front de produção não pode apontar para a API em HTTP: o `src/env.ts` dele recusa a URL.
 
 ## Como o projeto é desenvolvido
 

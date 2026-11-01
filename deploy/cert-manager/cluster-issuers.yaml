@@ -1,0 +1,38 @@
+# ClusterIssuers da Let's Encrypt (ACME HTTP-01 pelo Traefik), usados pelo Ingress educare-backend
+# (anotação cert-manager.io/cluster-issuer). Aplicados à mão com kubectl, logo depois do cert-manager
+# (README, "Deploy em produção"), e fora da Application educare: são de escopo de cluster, dependem do
+# CRD instalado à mão e não podem sumir num prune. Quando este arquivo mudar, reaplique-o.
+#
+# Use primeiro o letsencrypt-staging (limites de emissão generosos, certificado não confiável) e só
+# troque para o letsencrypt depois de o staging emitir. O e-mail recebe os avisos de vencimento e não é
+# segredo; a chave da conta ACME é gerada pelo cert-manager no Secret de privateKeySecretRef (namespace
+# cert-manager) e nunca é versionada.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+spec:
+  acme:
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    email: manuelaalecio.dev@gmail.com
+    privateKeySecretRef:
+      name: letsencrypt-staging-account-key
+    solvers:
+      - http01:
+          ingress:
+            ingressClassName: traefik
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: manuelaalecio.dev@gmail.com
+    privateKeySecretRef:
+      name: letsencrypt-account-key
+    solvers:
+      - http01:
+          ingress:
+            ingressClassName: traefik

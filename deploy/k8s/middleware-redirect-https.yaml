@@ -1,0 +1,10 @@
+# Redirect de HTTP para HTTPS, usado só pelo Ingress educare-backend-http (entrypoint web).
+# Referenciado como educare-redirect-https@kubernetescrd (<namespace>-<nome>; o namespace vem do kustomization).
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: redirect-https
+spec:
+  redirectScheme:
+    scheme: https
+    permanent: true

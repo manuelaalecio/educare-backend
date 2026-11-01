@@ -1,19 +1,25 @@
-# Traefik do k3s na porta 80 do nó, sem host (responde pelo IP). Só a API: o Postgres nunca entra aqui.
+# API em HTTPS (entrypoint websecure do Traefik do k3s), só pelo host sslip.io: sem host, o acesso pelo IP
+# puro dá 404. O certificado é emitido e renovado pelo cert-manager (ClusterIssuers de deploy/cert-manager,
+# aplicados à mão) no Secret educare-backend-tls. O HTTP é redirecionado pelo Ingress educare-backend-http.
+# Só a API: o Postgres nunca entra aqui.
+#
+# Emissão em duas etapas (README, "HTTPS"): primeiro letsencrypt-staging; só depois de o Certificate ficar
+# Ready=True com o certificado de staging, trocar a anotação para letsencrypt.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: educare-backend
-  # Para HTTPS (change futura): descomentar com o ClusterIssuer do cert-manager.
-  # annotations:
-  #   cert-manager.io/cluster-issuer: letsencrypt
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-staging
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
 spec:
   ingressClassName: traefik
-  # tls:
-  #   - hosts:
-  #       - api.example.org
-  #     secretName: educare-backend-tls
+  tls:
+    - hosts:
+        - 136-248-80-75.sslip.io
+      secretName: educare-backend-tls
   rules:
-    - # host: api.example.org
+    - host: 136-248-80-75.sslip.io
       http:
         paths:
           - path: /
