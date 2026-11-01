@@ -86,17 +86,27 @@
   Verificar também que os passos do README para "Voltar para só HTTP" correspondem ao ensaio.
 
   Verificado em 2026-11-01. O sync automático foi desligado e religado com `kubectl -n argocd patch application educare`, sem o CLI `argocd`. Pelo IP puro, `curl http://136.248.80.75/actuator/health` respondeu `UP`. Com o sync religado, o Argo CD recriou o `educare-backend-http` e o Middleware, e voltaram o `UP` em HTTPS e o `308`, sem emissão nova.
-- [ ] 4.5 PR 2 `dev` → `main` trocando a anotação para `cert-manager.io/cluster-issuer: letsencrypt`. Verificar `build` e `manifests` verdes, mergear sem o label e esperar o sync.
-- [ ] 4.6 (CA01, CA02, CA03) Com a produção:
+- [x] 4.5 PR 2 `dev` → `main` trocando a anotação para `cert-manager.io/cluster-issuer: letsencrypt`. Verificar `build` e `manifests` verdes, mergear sem o label e esperar o sync.
+
+  Feito no [PR 12](https://github.com/manuelaalecio/educare-backend/pull/12): `build` e `manifests` verdes.
+- [x] 4.6 (CA01, CA02, CA03) Com a produção:
   - `curl https://136-248-80-75.sslip.io/actuator/health`, sem `-k`, responde `200`;
   - o `openssl s_client` da 4.3 mostra um emissor da Let's Encrypt sem `(STAGING)`, e não o TRAEFIK DEFAULT CERT;
   - o redirect da 4.3 continua valendo;
   - `kubectl -n educare describe certificate educare-backend-tls` mostra `Ready=True` e um `Renewal Time` antes do `Not After`.
 
   Se não houver reemissão depois da troca, apagar o Secret `educare-backend-tls` conforme o README.
-- [ ] 4.7 (CA07, RNF01) De fora da rede, rodar `nmap -Pn 136.248.80.75`. Verificar que só 22, 80 e 443 respondem e que 5432, 6443 e a porta do Argo CD não respondem. Conferir também que `curl http://136.248.80.75/` responde `404` do Traefik, como esperado.
-- [ ] 4.8 Avisar a subtarefa do front ([EDUCARE_API_URL em HTTPS na Vercel e login de ponta a ponta](https://app.clickup.com/t/1dfh60ph131)) de que a API está em `https://136-248-80-75.sslip.io`. Verificar que o `EDUCARE_CORS_ALLOWED_ORIGINS` do Secret `educare-env` contém `https://educare-frontend-ruby.vercel.app`, com `kubectl -n educare get secret educare-env -o jsonpath='{.data.EDUCARE_CORS_ALLOWED_ORIGINS}' | base64 -d`.
+
+  Verificado em 2026-11-01. O certificado foi reemitido sem precisar apagar o Secret. Emissor `C=US, O=Let's Encrypt, CN=YR1`; `curl` sem `-k` responde `UP`; o HTTP responde `308`. Certificate com `Ready`, `Not After: 2027-01-30T13:48:53Z` e `Renewal Time: 2026-12-31T13:48:53Z`.
+- [x] 4.7 (CA07, RNF01) De fora da rede, rodar `nmap -Pn 136.248.80.75`. Verificar que só 22, 80 e 443 respondem e que 5432, 6443 e a porta do Argo CD não respondem. Conferir também que `curl http://136.248.80.75/` responde `404` do Traefik, como esperado.
+
+  Verificado em 2026-11-01. No `nmap`, 22, 80 e 443 estão `open`; 5432, 6443, 8080 e 8081 estão `filtered`. O IP puro responde `404`.
+- [x] 4.8 Avisar a subtarefa do front ([EDUCARE_API_URL em HTTPS na Vercel e login de ponta a ponta](https://app.clickup.com/t/1dfh60ph131)) de que a API está em `https://136-248-80-75.sslip.io`. Verificar que o `EDUCARE_CORS_ALLOWED_ORIGINS` do Secret `educare-env` contém `https://educare-frontend-ruby.vercel.app`, com `kubectl -n educare get secret educare-env -o jsonpath='{.data.EDUCARE_CORS_ALLOWED_ORIGINS}' | base64 -d`.
+
+  Verificado em 2026-11-01: o CORS é `https://educare-frontend-ruby.vercel.app`. O aviso à subtarefa do front fica com a Manuela.
 
 ## 5. Verificação final
 
-- [ ] 5.1 Rodar `./gradlew build` localmente, com o Docker ativo. Verificar que termina verde, com o contrato da API inalterado e o `jacocoTestCoverageVerification` passando (mínimo de 90% de linhas e de branches), e que os checks `build` e `manifests` dos PRs das tasks 4.2 e 4.5 estavam verdes no último commit antes do merge.
+- [x] 5.1 Rodar `./gradlew build` localmente, com o Docker ativo. Verificar que termina verde, com o contrato da API inalterado e o `jacocoTestCoverageVerification` passando (mínimo de 90% de linhas e de branches), e que os checks `build` e `manifests` dos PRs das tasks 4.2 e 4.5 estavam verdes no último commit antes do merge.
+
+  `./gradlew build` local verde (sem mudança em `src`), e os checks `build` e `manifests` verdes nos PRs 11 e 12.
