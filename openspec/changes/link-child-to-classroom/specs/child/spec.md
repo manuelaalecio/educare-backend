@@ -116,7 +116,7 @@ O parâmetro opcional `classroomId` SHALL filtrar as crianças cuja turma atual 
 - **THEN** a resposta é `200 OK`, `content` tem `Ana` e `Bruno`, nessa ordem, e `page` tem `"size": 2`, `"number": 0`, `"totalElements": 4` e `"totalPages": 2`
 
 #### Scenario: Itens da listagem sem dados sensíveis
-- **WHEN** existe só a criança `Maria Clara Souza`, na `Turma 1`, criada com CPF, RG, certidão de nascimento, endereço e dados de saúde, e um cliente envia `GET /api/v1/children`
+- **WHEN** existe só a criança `Maria Clara Souza`, na `Turma 1`, criada com CPF, RG, matrícula da certidão de nascimento, endereço e dados de saúde, e um cliente envia `GET /api/v1/children`
 - **THEN** o item de `content` tem exatamente as propriedades `id`, `name`, `birthDate`, `classroom`, `createdAt` e `updatedAt`, e `classroom` tem exatamente `"id": "<id da Turma 1>"` e `"name": "Turma 1"`
 
 #### Scenario: Ordenação decrescente por data de nascimento

@@ -3,6 +3,7 @@ package com.manuelaalecio.educare_backend.shared.error;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -12,10 +13,14 @@ import org.springframework.data.core.PropertyReferenceException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.mock.http.MockHttpInputMessage;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.validation.BeanPropertyBindingResult;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.context.request.ServletWebRequest;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.json.JsonMapper;
 
 class GlobalExceptionHandlerTest {
 
@@ -123,6 +128,127 @@ class GlobalExceptionHandlerTest {
 		// then
 		assertThat(problem.getStatus()).isEqualTo(400);
 		assertThat(problem.getDetail()).isEqualTo("Propriedade inexistente na requisição");
+	}
+
+	@Test
+	void shouldReturnFieldErrorWhenDateHasAnotherFormat() {
+		// when
+		ResponseEntity<Object> response = handleUnreadable("{\"birthDate\": \"10/05/2018\"}");
+
+		// then
+		assertFieldErrors(response, "birthDate");
+	}
+
+	@Test
+	void shouldReturnFieldErrorWhenDateDoesNotExist() {
+		// when
+		ResponseEntity<Object> response = handleUnreadable("{\"birthDate\": \"2018-02-30\"}");
+
+		// then
+		assertFieldErrors(response, "birthDate");
+	}
+
+	@Test
+	void shouldReturnFieldErrorWhenFieldHasWrongType() {
+		// when
+		ResponseEntity<Object> response = handleUnreadable("{\"name\": {\"first\": \"Maria\"}}");
+
+		// then
+		assertFieldErrors(response, "name");
+	}
+
+	@Test
+	void shouldJoinPropertiesWithDotWhenFieldIsNested() {
+		// when
+		ResponseEntity<Object> response = handleUnreadable("{\"address\": {\"since\": \"ontem\"}}");
+
+		// then
+		assertFieldErrors(response, "address.since");
+	}
+
+	@Test
+	void shouldWriteIndexInBracketsWhenFieldIsInList() {
+		// when
+		ResponseEntity<Object> response = handleUnreadable("{\"addresses\": [{\"since\": \"ontem\"}]}");
+
+		// then
+		assertFieldErrors(response, "addresses[0].since");
+	}
+
+	@Test
+	void shouldNotEchoReceivedValueWhenFieldIsUnreadable() {
+		// when
+		ResponseEntity<Object> response = handleUnreadable("{\"birthDate\": \"52998224725\"}");
+
+		// then
+		assertThat(response.getBody()).isInstanceOfSatisfying(ProblemDetail.class,
+				problem -> assertThat(problem.toString()).doesNotContain("52998224725"));
+	}
+
+	@Test
+	void shouldReturnBadRequestWithoutErrorsWhenJsonIsBroken() {
+		// when
+		ResponseEntity<Object> response = handleUnreadable("{\"name\": \"Maria\"");
+
+		// then
+		assertNoFieldErrors(response);
+	}
+
+	@Test
+	void shouldReturnBadRequestWithoutErrorsWhenBodyIsMissing() throws Exception {
+		// given
+		var exception = new HttpMessageNotReadableException("Required request body is missing",
+				new MockHttpInputMessage(new byte[0]));
+
+		// when
+		ResponseEntity<Object> response = handler.handleException(exception,
+				new ServletWebRequest(new MockHttpServletRequest()));
+
+		// then
+		assertNoFieldErrors(response);
+	}
+
+	private ResponseEntity<Object> handleUnreadable(String json) {
+		JacksonException cause = readError(json);
+		var exception = new HttpMessageNotReadableException("JSON parse error", cause,
+				new MockHttpInputMessage(json.getBytes()));
+		try {
+			return handler.handleException(exception, new ServletWebRequest(new MockHttpServletRequest()));
+		}
+		catch (Exception ex) {
+			throw new IllegalStateException(ex);
+		}
+	}
+
+	private static JacksonException readError(String json) {
+		try {
+			JsonMapper.builder().build().readValue(json, Person.class);
+		}
+		catch (JacksonException ex) {
+			return ex;
+		}
+		throw new IllegalStateException("JSON lido sem erro: " + json);
+	}
+
+	private static void assertFieldErrors(ResponseEntity<Object> response, String field) {
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+		assertThat(response.getBody()).isInstanceOfSatisfying(ProblemDetail.class, problem -> {
+			assertThat(problem.getDetail()).isEqualTo("Um ou mais campos são inválidos");
+			assertThat(problem.getProperties()).containsExactly(Map.entry(GlobalExceptionHandler.ERRORS_PROPERTY,
+					List.of(Map.of("field", field, "message", "valor em formato inválido"))));
+		});
+	}
+
+	private static void assertNoFieldErrors(ResponseEntity<Object> response) {
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+		assertThat(response.getBody()).isInstanceOfSatisfying(ProblemDetail.class,
+				problem -> assertThat(problem.getProperties()).isNullOrEmpty());
+	}
+
+	record Person(String name, LocalDate birthDate, Address address, List<Address> addresses) {
+	}
+
+	record Address(LocalDate since) {
 	}
 
 	record Sample(String name, String login) {

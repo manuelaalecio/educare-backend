@@ -53,6 +53,252 @@
         ],
         "type" : "object"
       },
+      "ChildRequest" : {
+        "properties" : {
+          "address" : {
+            "maxLength" : 200,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "addressComplement" : {
+            "maxLength" : 100,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "addressNumber" : {
+            "maxLength" : 20,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "birthCertificateNumber" : {
+            "type" : "string"
+          },
+          "birthDate" : {
+            "format" : "date",
+            "type" : "string"
+          },
+          "birthplace" : {
+            "maxLength" : 150,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "cep" : {
+            "minLength" : 1,
+            "pattern" : "^[0-9]{5}-?[0-9]{3}$",
+            "type" : "string"
+          },
+          "church" : {
+            "maxLength" : 150,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "city" : {
+            "maxLength" : 100,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "cpf" : {
+            "type" : "string"
+          },
+          "gender" : {
+            "pattern" : "MALE|FEMALE|OTHER",
+            "type" : "string"
+          },
+          "healthReport" : {
+            "maxLength" : 2000,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "maritalStatus" : {
+            "pattern" : "SINGLE|MARRIED|STABLE_UNION|DIVORCED|WIDOWED",
+            "type" : "string"
+          },
+          "medicalObservation" : {
+            "maxLength" : 2000,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "medication" : {
+            "maxLength" : 1000,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "name" : {
+            "maxLength" : 150,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "nationality" : {
+            "maxLength" : 100,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "neighborhood" : {
+            "maxLength" : 100,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "race" : {
+            "pattern" : "WHITE|BLACK|BROWN|YELLOW|INDIGENOUS",
+            "type" : "string"
+          },
+          "religion" : {
+            "maxLength" : 100,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "rg" : {
+            "maxLength" : 20,
+            "minLength" : 0,
+            "pattern" : ".*[A-Za-z0-9].*",
+            "type" : "string"
+          },
+          "state" : {
+            "minLength" : 1,
+            "pattern" : "AC|AL|AP|AM|BA|CE|DF|ES|GO|MA|MT|MS|MG|PA|PB|PR|PE|PI|RJ|RN|RS|RO|RR|SC|SP|SE|TO",
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "address",
+          "addressNumber",
+          "birthDate",
+          "cep",
+          "city",
+          "name",
+          "neighborhood",
+          "state"
+        ],
+        "type" : "object"
+      },
+      "ChildResponse" : {
+        "properties" : {
+          "address" : {
+            "type" : "string"
+          },
+          "addressComplement" : {
+            "type" : "string"
+          },
+          "addressNumber" : {
+            "type" : "string"
+          },
+          "birthCertificateNumber" : {
+            "type" : "string"
+          },
+          "birthDate" : {
+            "format" : "date",
+            "type" : "string"
+          },
+          "birthplace" : {
+            "type" : "string"
+          },
+          "cep" : {
+            "type" : "string"
+          },
+          "church" : {
+            "type" : "string"
+          },
+          "city" : {
+            "type" : "string"
+          },
+          "cpf" : {
+            "type" : "string"
+          },
+          "createdAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "gender" : {
+            "type" : "string"
+          },
+          "healthReport" : {
+            "type" : "string"
+          },
+          "id" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "maritalStatus" : {
+            "type" : "string"
+          },
+          "medicalObservation" : {
+            "type" : "string"
+          },
+          "medication" : {
+            "type" : "string"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "nationality" : {
+            "type" : "string"
+          },
+          "neighborhood" : {
+            "type" : "string"
+          },
+          "race" : {
+            "type" : "string"
+          },
+          "religion" : {
+            "type" : "string"
+          },
+          "rg" : {
+            "type" : "string"
+          },
+          "state" : {
+            "type" : "string"
+          },
+          "updatedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "address",
+          "addressNumber",
+          "birthDate",
+          "cep",
+          "city",
+          "createdAt",
+          "id",
+          "name",
+          "neighborhood",
+          "state",
+          "updatedAt"
+        ],
+        "type" : "object"
+      },
+      "ChildSummaryResponse" : {
+        "properties" : {
+          "birthDate" : {
+            "format" : "date",
+            "type" : "string"
+          },
+          "createdAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "id" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "updatedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "birthDate",
+          "createdAt",
+          "id",
+          "name",
+          "updatedAt"
+        ],
+        "type" : "object"
+      },
       "ClassroomResponse" : {
         "properties" : {
           "createdAt" : {
@@ -251,6 +497,24 @@
             "type" : "array"
           }
         },
+        "type" : "object"
+      },
+      "PagedModelChildSummaryResponse" : {
+        "properties" : {
+          "content" : {
+            "items" : {
+              "$ref" : "#/components/schemas/ChildSummaryResponse"
+            },
+            "type" : "array"
+          },
+          "page" : {
+            "$ref" : "#/components/schemas/PageMetadata"
+          }
+        },
+        "required" : [
+          "content",
+          "page"
+        ],
         "type" : "object"
       },
       "PagedModelUserResponse" : {
@@ -529,6 +793,334 @@
         },
         "tags" : [
           "auth-controller"
+        ]
+      }
+    },
+    "/api/v1/children" : {
+      "get" : {
+        "operationId" : "list_2",
+        "parameters" : [
+          {
+            "in" : "query",
+            "name" : "name",
+            "required" : false,
+            "schema" : {
+              "type" : "string"
+            }
+          },
+          {
+            "in" : "query",
+            "name" : "pageable",
+            "required" : true,
+            "schema" : {
+              "$ref" : "#/components/schemas/Pageable"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PagedModelChildSummaryResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Bad Request"
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Unauthorized"
+          }
+        },
+        "tags" : [
+          "child-controller"
+        ]
+      },
+      "post" : {
+        "operationId" : "create_2",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ChildRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ChildResponse"
+                }
+              }
+            },
+            "description" : "Created",
+            "headers" : {
+              "Location" : {
+                "description" : "Path of the created child",
+                "schema" : {
+                  "format" : "uri",
+                  "type" : "string"
+                },
+                "style" : "simple"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Bad Request"
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Unauthorized"
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Conflict"
+          }
+        },
+        "tags" : [
+          "child-controller"
+        ]
+      }
+    },
+    "/api/v1/children/{id}" : {
+      "delete" : {
+        "operationId" : "delete_2",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "id",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "204" : {
+            "description" : "No Content"
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Bad Request"
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Unauthorized"
+          },
+          "403" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Forbidden"
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Not Found"
+          }
+        },
+        "tags" : [
+          "child-controller"
+        ]
+      },
+      "get" : {
+        "operationId" : "findById_2",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "id",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ChildResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Bad Request"
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Unauthorized"
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Not Found"
+          }
+        },
+        "tags" : [
+          "child-controller"
+        ]
+      },
+      "put" : {
+        "operationId" : "update_1",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "id",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ChildRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ChildResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Bad Request"
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Unauthorized"
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Not Found"
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Conflict"
+          }
+        },
+        "tags" : [
+          "child-controller"
         ]
       }
     },

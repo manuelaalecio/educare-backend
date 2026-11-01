@@ -227,6 +227,77 @@ class ApiContractContentTest {
 		assertThat(responses("/api/v1/auth/me", "get")).doesNotContainKey("403");
 	}
 
+	// ---------- children ----------
+
+	private static final String[] CHILD_REQUIRED_FIELDS = {"id", "name", "birthDate", "cep", "address",
+			"neighborhood", "addressNumber", "city", "state", "createdAt", "updatedAt"};
+
+	private static final String[] CHILD_OPTIONAL_FIELDS = {"addressComplement", "birthplace", "race", "gender",
+			"cpf", "rg", "nationality", "maritalStatus", "religion", "church", "healthReport", "medication",
+			"medicalObservation", "birthCertificateNumber"};
+
+	@Test
+	void shouldDeclareCreatedWithLocationAndFullChildWhenReadingChildCreation() {
+		// when
+		Map<String, Object> created = response("/api/v1/children", "post", "201");
+		Map<String, Object> schema = successSchema("/api/v1/children", "post", "201");
+
+		// then
+		assertThat(responses("/api/v1/children", "post")).doesNotContainKey("200");
+		assertThat(created).extractingByKey("headers").asInstanceOf(MAP).containsKey("Location");
+		assertFullChild(schema);
+	}
+
+	@ParameterizedTest
+	@CsvSource({"/api/v1/children/{id}, get", "/api/v1/children/{id}, put"})
+	void shouldDeclareFullChildWhenOperationReturnsOneChild(String path, String method) {
+		// when / then
+		assertFullChild(successSchema(path, method, "200"));
+	}
+
+	@Test
+	void shouldDeclareOnlySummaryFieldsWhenReadingChildListing() {
+		// when
+		Map<String, Object> page = successSchema("/api/v1/children", "get", "200");
+		String itemRef = contract.read("$.components.schemas.PagedModelChildSummaryResponse.properties.content.items.$ref");
+		Map<String, Object> item = schema(itemRef);
+
+		// then
+		assertThat(required(page)).contains("content", "page");
+		assertThat(properties(item)).containsOnlyKeys("id", "name", "birthDate", "createdAt", "updatedAt");
+		assertThat(required(item)).containsExactlyInAnyOrder("id", "name", "birthDate", "createdAt", "updatedAt");
+	}
+
+	@Test
+	void shouldDeclareChildProblemsWhenReadingChildOperations() {
+		// when / then
+		assertProblemResponses("/api/v1/children", "post", "400", "401", "409");
+		assertProblemResponses("/api/v1/children", "get", "400", "401");
+		assertProblemResponses("/api/v1/children/{id}", "get", "400", "401", "404");
+		assertProblemResponses("/api/v1/children/{id}", "put", "400", "401", "404", "409");
+		assertProblemResponses("/api/v1/children/{id}", "delete", "400", "401", "403", "404");
+	}
+
+	@ParameterizedTest
+	@CsvSource({"/api/v1/children, post", "/api/v1/children, get", "/api/v1/children/{id}, get",
+			"/api/v1/children/{id}, put"})
+	void shouldNotDeclareForbiddenWhenAnyAuthenticatedUserMayCallChildOperation(String path, String method) {
+		// when / then
+		assertThat(responses(path, method)).doesNotContainKey("403");
+	}
+
+	@Test
+	void shouldDeclareNoContentWithoutBodyWhenReadingChildDeletion() {
+		// when / then
+		assertThat(responses("/api/v1/children/{id}", "delete")).containsKey("204").doesNotContainKey("200");
+		assertThat(response("/api/v1/children/{id}", "delete", "204")).doesNotContainKey("content");
+	}
+
+	private static void assertFullChild(Map<String, Object> schema) {
+		assertThat(properties(schema)).containsKeys(CHILD_REQUIRED_FIELDS).containsKeys(CHILD_OPTIONAL_FIELDS);
+		assertThat(required(schema)).containsExactlyInAnyOrder(CHILD_REQUIRED_FIELDS);
+	}
+
 	private static void assertProblemResponses(String path, String method, String... statuses) {
 		for (String status : statuses) {
 			String ref = contract.read(operationPath(path, method) + ".responses['" + status

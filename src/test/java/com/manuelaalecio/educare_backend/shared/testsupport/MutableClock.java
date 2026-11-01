@@ -6,7 +6,8 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 
 /**
- * UTC clock whose current instant can be changed by the test.
+ * UTC clock whose current instant can be changed by the test. {@link #withZone(ZoneId)} returns a view in another
+ * time zone that keeps following the instant set here.
  */
 public class MutableClock extends Clock {
 
@@ -32,7 +33,34 @@ public class MutableClock extends Clock {
 
 	@Override
 	public Clock withZone(ZoneId zone) {
-		return this;
+		return ZoneOffset.UTC.equals(zone) ? this : new ZonedView(this, zone);
+	}
+
+	private static final class ZonedView extends Clock {
+
+		private final MutableClock source;
+		private final ZoneId zone;
+
+		private ZonedView(MutableClock source, ZoneId zone) {
+			this.source = source;
+			this.zone = zone;
+		}
+
+		@Override
+		public Instant instant() {
+			return source.instant();
+		}
+
+		@Override
+		public ZoneId getZone() {
+			return zone;
+		}
+
+		@Override
+		public Clock withZone(ZoneId newZone) {
+			return source.withZone(newZone);
+		}
+
 	}
 
 }
