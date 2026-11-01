@@ -2,15 +2,15 @@
 
 ## Purpose
 
-Manter o cadastro das crianças atendidas pela instituição: criar, consultar, listar com busca por nome, alterar e excluir crianças, com dados pessoais, endereço, documentos e dados de saúde, tratados como dados pessoais sensíveis.
+Manter o cadastro das crianças atendidas pela instituição: criar, consultar, listar com busca por nome, alterar e excluir crianças, com dados pessoais, endereço, documentos (CPF, RG e certidão de nascimento) e dados de saúde, tratados como dados pessoais sensíveis.
 
 ## ADDED Requirements
 
 ### Requirement: Dados da criança
-Uma criança SHALL ter os campos obrigatórios `name`, `birthDate`, `cep`, `address`, `neighborhood`, `addressNumber`, `city` e `state`, e os campos opcionais `addressComplement`, `birthplace`, `race`, `gender`, `cpf`, `rg`, `nationality`, `maritalStatus`, `religion`, `church`, `healthReport`, `medication` e `medicalObservation`, além de `id`, `createdAt` e `updatedAt`, gerados pelo sistema. Nas requisições de criação e alteração, o sistema SHALL recusar com `400 Bad Request` e um `ProblemDetail` que lista cada campo inválido (propriedade `errors`, com `field` e `message`), sem gravar nada, quando:
+Uma criança SHALL ter os campos obrigatórios `name`, `birthDate`, `cep`, `address`, `neighborhood`, `addressNumber`, `city` e `state`, e os campos opcionais `addressComplement`, `birthplace`, `race`, `gender`, `cpf`, `rg`, `nationality`, `maritalStatus`, `religion`, `church`, `healthReport`, `medication`, `medicalObservation` e os campos da certidão de nascimento (`birthCertificateType`, `birthCertificateNumber`, `birthCertificateRegistryOffice`, `birthCertificateBook`, `birthCertificatePage` e `birthCertificateTerm`, com regras próprias no requirement "Certidão de nascimento"), além de `id`, `createdAt` e `updatedAt`, gerados pelo sistema. Nas requisições de criação e alteração, o sistema SHALL recusar com `400 Bad Request` e um `ProblemDetail` que lista cada campo inválido (propriedade `errors`, com `field` e `message`), sem gravar nada, quando:
 - um campo obrigatório de texto estiver ausente, vazio ou só com espaços;
 - `birthDate` estiver ausente;
-- um campo de texto passar do tamanho máximo, contado depois de remover os espaços das pontas: `name` 150, `birthplace` 150, `address` 200, `neighborhood` 100, `addressNumber` 20, `addressComplement` 100, `city` 100, `rg` 20, `nationality` 100, `religion` 100, `church` 150, `medication` 1000, `healthReport` 2000 e `medicalObservation` 2000 caracteres.
+- um campo de texto passar do tamanho máximo, contado depois de remover os espaços das pontas: `name` 150, `birthplace` 150, `address` 200, `neighborhood` 100, `addressNumber` 20, `addressComplement` 100, `city` 100, `rg` 20, `nationality` 100, `religion` 100, `church` 150, `birthCertificateRegistryOffice` 150, `birthCertificateBook` 20, `birthCertificatePage` 20, `birthCertificateTerm` 20, `medication` 1000, `healthReport` 2000 e `medicalObservation` 2000 caracteres.
 
 Todos os campos de texto SHALL ser gravados sem espaços no início e no fim. Um campo opcional de texto vazio ou só com espaços SHALL ser gravado como ausente e devolvido como `null`. As respostas que devolvem a criança completa SHALL conter todos os campos, com `null` nos opcionais não informados.
 
@@ -161,6 +161,91 @@ Quando informado, o `rg` SHALL ser aceito com qualquer pontuação e SHALL ser g
 - **WHEN** um cliente cria uma criança com `"rg": "..."` e os demais campos obrigatórios válidos
 - **THEN** a resposta é `400 Bad Request` e `errors` contém uma entrada para o campo `rg`; nenhuma criança é gravada
 
+### Requirement: Certidão de nascimento
+A certidão de nascimento SHALL ser opcional e, quando informada, SHALL seguir um de dois modelos, indicado por `birthCertificateType`:
+- `REGISTRATION` (modelo novo): `birthCertificateNumber` (a matrícula) obrigatório; `birthCertificateRegistryOffice`, `birthCertificateBook`, `birthCertificatePage` e `birthCertificateTerm` SHALL estar ausentes.
+- `LEGACY` (modelo antigo): `birthCertificateRegistryOffice` (o cartório, com a cidade no próprio nome), `birthCertificateBook`, `birthCertificatePage` e `birthCertificateTerm` obrigatórios; `birthCertificateNumber` SHALL estar ausente.
+
+Com `birthCertificateType` ausente ou `null`, todos os demais campos da certidão SHALL estar ausentes. Qualquer outro valor de `birthCertificateType` SHALL ser recusado. Os campos de texto da certidão seguem as regras gerais de texto (sem espaços nas pontas, em branco vira ausente, tamanho máximo).
+
+A matrícula SHALL ser aceita com pontos, espaços e hífens entre os dígitos e SHALL ser gravada e devolvida só com os dígitos. Depois de tirar esses separadores, ela SHALL ter exatamente 32 dígitos, com:
+- os dois últimos dígitos (31º e 32º) iguais aos dígitos verificadores calculados a partir dos 30 primeiros, pelo algoritmo de módulo 11 da matrícula nacional do registro civil;
+- o 15º dígito (tipo do livro) igual a `1` (livro de nascimento); caso contrário, a mensagem do erro SHALL ser "Esta matrícula não é de uma certidão de nascimento";
+- o ano do registro (dígitos 11 a 14) não anterior ao ano de `birthDate` nem posterior ao ano atual no fuso `America/Sao_Paulo`. Sem um `birthDate` válido, só o limite do ano atual é conferido.
+
+Cada violação dessas regras SHALL ser recusada com `400 Bad Request` e uma entrada em `errors`, sem gravar nada, no campo:
+- `birthCertificateType`, quando o valor não for um dos dois modelos, ou quando faltar e algum outro campo da certidão estiver preenchido;
+- `birthCertificateNumber`, quando a matrícula faltar no modelo `REGISTRATION`, vier no modelo `LEGACY` ou for inválida;
+- cada um de `birthCertificateRegistryOffice`, `birthCertificateBook`, `birthCertificatePage` e `birthCertificateTerm` que faltar no modelo `LEGACY` ou vier no modelo `REGISTRATION`.
+
+Duas crianças SHALL NOT ter a mesma certidão: no modelo `REGISTRATION`, a mesma matrícula; no modelo `LEGACY`, o mesmo cartório (sem diferenciar maiúsculas e minúsculas nem letras com e sem acento) com o mesmo livro, a mesma folha e o mesmo termo. A criação ou alteração que causaria isso SHALL ser recusada com `409 Conflict` e um `ProblemDetail` que não contém nenhum dado da certidão, sem gravar nada. Várias crianças SHALL poder ficar sem certidão. A certidão SHALL aparecer nas respostas que devolvem a criança completa (com `null` nos campos não informados) e SHALL NOT aparecer nos itens da listagem.
+
+Nos cenários abaixo, "a matrícula M" é uma matrícula válida de 32 dígitos, de um registro de nascimento feito em 2018, e os demais campos obrigatórios da criança são válidos, com `"birthDate": "2018-05-10"`.
+
+#### Scenario: Matrícula válida com pontos e espaços é gravada só com dígitos
+- **WHEN** um cliente cria uma criança com `"birthCertificateType": "REGISTRATION"` e `birthCertificateNumber` com a matrícula M escrita com pontos e espaços entre os grupos de dígitos
+- **THEN** a resposta é `201 Created` com `"birthCertificateType": "REGISTRATION"`, `birthCertificateNumber` igual aos 32 dígitos de M sem separadores, e `birthCertificateRegistryOffice`, `birthCertificateBook`, `birthCertificatePage` e `birthCertificateTerm` com `null`
+
+#### Scenario: Matrícula com dígito verificador errado
+- **WHEN** um cliente cria uma criança com `"birthCertificateType": "REGISTRATION"` e a matrícula M com o último dígito trocado por outro
+- **THEN** a resposta é `400 Bad Request` e `errors` contém uma entrada para o campo `birthCertificateNumber`; nenhuma criança é gravada
+
+#### Scenario: Matrícula com tamanho errado ou com letras
+- **WHEN** um cliente cria uma criança com `"birthCertificateType": "REGISTRATION"` e `birthCertificateNumber` com só os 31 primeiros dígitos de M, e outro cliente cria uma com os 32 dígitos de M trocando o primeiro por `A`
+- **THEN** as duas respostas são `400 Bad Request` com uma entrada em `errors` para o campo `birthCertificateNumber`; nenhuma criança é gravada
+
+#### Scenario: Matrícula que não é de livro de nascimento
+- **WHEN** um cliente cria uma criança com `"birthCertificateType": "REGISTRATION"` e uma matrícula de 32 dígitos com os dígitos verificadores corretos, mas com o 15º dígito `2` (livro de casamento)
+- **THEN** a resposta é `400 Bad Request` e `errors` contém uma entrada para o campo `birthCertificateNumber` com a mensagem "Esta matrícula não é de uma certidão de nascimento"; nenhuma criança é gravada
+
+#### Scenario: Ano do registro anterior ao nascimento ou no futuro
+- **WHEN** o relógio da aplicação está em `2026-03-01T10:00:00Z`, e um cliente cria uma criança com `"birthDate": "2019-01-01"` e a matrícula M (registro de 2018), e outro cria uma com `"birthDate": "2018-05-10"` e uma matrícula válida em todo o resto, mas com o ano do registro `2027`
+- **THEN** as duas respostas são `400 Bad Request` com uma entrada em `errors` para o campo `birthCertificateNumber`; nenhuma criança é gravada
+
+#### Scenario: Modelo antigo completo é gravado
+- **WHEN** um cliente cria uma criança com `"birthCertificateType": "LEGACY"`, `"birthCertificateRegistryOffice": " Cartório do 1º Ofício de Registro Civil - São Paulo/SP "`, `"birthCertificateBook": "A-123"`, `"birthCertificatePage": "45"` e `"birthCertificateTerm": "6789"`
+- **THEN** a resposta é `201 Created` com `"birthCertificateType": "LEGACY"`, `"birthCertificateRegistryOffice": "Cartório do 1º Ofício de Registro Civil - São Paulo/SP"`, `"birthCertificateBook": "A-123"`, `"birthCertificatePage": "45"`, `"birthCertificateTerm": "6789"` e `"birthCertificateNumber": null`
+
+#### Scenario: Modelo antigo incompleto
+- **WHEN** um cliente cria uma criança com `"birthCertificateType": "LEGACY"`, `"birthCertificateRegistryOffice": "Cartório do 1º Ofício - São Paulo/SP"` e `"birthCertificatePage": "45"`, sem livro nem termo
+- **THEN** a resposta é `400 Bad Request` e `errors` contém uma entrada para `birthCertificateBook` e uma para `birthCertificateTerm`, e nenhuma para os demais campos da certidão; nenhuma criança é gravada
+
+#### Scenario: Campos da certidão sem o modelo
+- **WHEN** um cliente cria uma criança sem `birthCertificateType` e com `"birthCertificateBook": "A-123"`
+- **THEN** a resposta é `400 Bad Request` e `errors` contém uma entrada para o campo `birthCertificateType`; nenhuma criança é gravada
+
+#### Scenario: Modelo desconhecido
+- **WHEN** um cliente cria uma criança com `"birthCertificateType": "NEW"` e a matrícula M
+- **THEN** a resposta é `400 Bad Request` e `errors` contém uma entrada para o campo `birthCertificateType`; nenhuma criança é gravada
+
+#### Scenario: Campos de um modelo misturados com o outro
+- **WHEN** um cliente cria uma criança com `"birthCertificateType": "REGISTRATION"`, a matrícula M e `"birthCertificateTerm": "6789"`, e outro cliente cria uma com o modelo antigo completo e a matrícula M em `birthCertificateNumber`
+- **THEN** a primeira resposta é `400 Bad Request` com uma entrada em `errors` para `birthCertificateTerm`, a segunda é `400 Bad Request` com uma entrada para `birthCertificateNumber`, e nenhuma criança é gravada
+
+#### Scenario: Matrícula de outra criança
+- **WHEN** já existe uma criança com a matrícula M e um cliente cria outra, ou altera uma terceira criança, com a matrícula M escrita com espaços
+- **THEN** as respostas são `409 Conflict` com `Content-Type: application/problem+json`, o corpo não contém nenhum trecho de 5 ou mais dígitos seguidos de M, e continua existindo só uma criança com a matrícula M
+
+#### Scenario: Modelo antigo repetido com outra caixa e acento no cartório
+- **WHEN** já existe uma criança com o modelo antigo `"Cartório do 1º Ofício - São Paulo/SP"`, livro `A-123`, folha `45` e termo `6789`, e um cliente cria outra com cartório `"CARTORIO DO 1º OFICIO - SAO PAULO/SP"` e o mesmo livro, folha e termo
+- **THEN** a resposta é `409 Conflict`, o corpo não contém o cartório, o livro, a folha nem o termo, e nenhuma criança é gravada
+
+#### Scenario: Mesmo cartório com outro termo
+- **WHEN** já existe uma criança com o modelo antigo `"Cartório do 1º Ofício - São Paulo/SP"`, livro `A-123`, folha `45` e termo `6789`, e um cliente cria outra com o mesmo cartório, livro e folha e o termo `6790`
+- **THEN** a resposta é `201 Created`
+
+#### Scenario: Várias crianças sem certidão
+- **WHEN** já existe uma criança sem certidão e um cliente cria outra sem certidão
+- **THEN** a resposta é `201 Created` com os seis campos da certidão com `null`
+
+#### Scenario: Alteração mantendo a própria certidão
+- **WHEN** a criança com a matrícula M é alterada com os dados válidos e a mesma matrícula M, escrita com pontos
+- **THEN** a resposta é `200 OK` com `birthCertificateNumber` igual aos 32 dígitos de M
+
+#### Scenario: Alteração sem certidão apaga a certidão
+- **WHEN** a criança com a matrícula M é alterada com os dados obrigatórios e sem nenhum campo da certidão
+- **THEN** a resposta é `200 OK` com os seis campos da certidão com `null`, e outra criança pode ser criada em seguida com a matrícula M (`201 Created`)
+
 ### Requirement: Consultar criança por id
 O sistema SHALL retornar em `GET /api/v1/children/{id}` a criança com esse id, com `200 OK` e todos os seus campos. Se não existir criança com esse id, SHALL responder `404 Not Found` com um `ProblemDetail`. Se o id não for um UUID válido, SHALL responder `400 Bad Request` com um `ProblemDetail`.
 
@@ -186,7 +271,7 @@ O parâmetro opcional `name` SHALL filtrar as crianças cujo nome contém o text
 - **THEN** a resposta é `200 OK`, `content` tem `Ana` e `Bruno`, nessa ordem, e `page` tem `"size": 2`, `"number": 0`, `"totalElements": 4` e `"totalPages": 2`
 
 #### Scenario: Itens da listagem sem dados sensíveis
-- **WHEN** existe só a criança `Maria Clara Souza`, criada com CPF, endereço e dados de saúde, e um cliente envia `GET /api/v1/children`
+- **WHEN** existe só a criança `Maria Clara Souza`, criada com CPF, RG, certidão de nascimento, endereço e dados de saúde, e um cliente envia `GET /api/v1/children`
 - **THEN** o item de `content` tem exatamente as propriedades `id`, `name`, `birthDate`, `createdAt` e `updatedAt`
 
 #### Scenario: Ordenação decrescente por data de nascimento
@@ -241,14 +326,14 @@ O sistema SHALL substituir todos os dados da criança pelos recebidos em `PUT /a
 - **THEN** a resposta é `404 Not Found` com `Content-Type: application/problem+json`, e nenhuma criança é criada
 
 ### Requirement: Excluir criança
-O sistema SHALL excluir definitivamente a criança em `DELETE /api/v1/children/{id}`, respondendo `204 No Content`; depois disso, a criança não aparece na consulta nem na listagem, e o CPF e o RG dela ficam livres para outra criança. Se não existir criança com esse id, SHALL responder `404 Not Found`.
+O sistema SHALL excluir definitivamente a criança em `DELETE /api/v1/children/{id}`, respondendo `204 No Content`; depois disso, a criança não aparece na consulta nem na listagem, e o CPF, o RG e a certidão de nascimento dela ficam livres para outra criança. Se não existir criança com esse id, SHALL responder `404 Not Found`.
 
 #### Scenario: Criança excluída
 - **WHEN** existe a criança `Maria Clara Souza` e um `COORDENADOR` envia `DELETE /api/v1/children/{id}` com o id dela
 - **THEN** a resposta é `204 No Content`, `GET /api/v1/children/{id}` passa a responder `404 Not Found` e a listagem não contém mais essa criança
 
-#### Scenario: CPF liberado após exclusão
-- **WHEN** a criança com CPF `52998224725` é excluída e depois um cliente cria outra com `"cpf": "52998224725"`
+#### Scenario: CPF e certidão liberados após exclusão
+- **WHEN** a criança com CPF `52998224725` e a matrícula M (requirement "Certidão de nascimento") é excluída, e depois um cliente cria outra com `"cpf": "52998224725"`, `"birthCertificateType": "REGISTRATION"` e a matrícula M
 - **THEN** a criação responde `201 Created`
 
 #### Scenario: Exclusão de criança inexistente
