@@ -64,15 +64,19 @@
   - `kubectl -n cert-manager get pods` com os três pods `Running`;
   - `kubectl get clusterissuer` com `letsencrypt-staging` e `letsencrypt` em `Ready=True`;
   - `kubectl top pod -n cert-manager` (se o metrics-server estiver ativo) com o consumo dentro de ~200 MB (RNF02).
-- [ ] 4.2 PR 1 `dev` → `main` com os grupos 1 a 3 e a task 5.1 já rodada localmente (issuer `letsencrypt-staging`). Verificar que `build` e `manifests` passam verdes. Mergear sem o label `build`; não é preciso imagem nova. Esperar o sync do Argo CD.
-- [ ] 4.3 (CA04, CA02) Com o staging:
+- [x] 4.2 PR 1 `dev` → `main` com os grupos 1 a 3 e a task 5.1 já rodada localmente (issuer `letsencrypt-staging`). Verificar que `build` e `manifests` passam verdes. Mergear sem o label `build`; não é preciso imagem nova. Esperar o sync do Argo CD.
+
+  Feito no [PR 11](https://github.com/manuelaalecio/educare-backend/pull/11): `build` e `manifests` verdes. O merge foi com o label `build`, porque o PR levou junto a troca de roles; não muda a versão em produção, que só sobe com uma tag `vX.Y.Z`.
+- [x] 4.3 (CA04, CA02) Com o staging:
   - `kubectl -n educare get certificate` mostra `educare-backend-tls` em `Ready=True`;
   - `openssl s_client -connect 136-248-80-75.sslip.io:443 -servername 136-248-80-75.sslip.io </dev/null | openssl x509 -noout -issuer` mostra um emissor com `(STAGING)`;
   - `curl -k https://136-248-80-75.sslip.io/actuator/health` responde `200`;
   - `curl -I http://136-248-80-75.sslip.io/actuator/health` responde `301` ou `308`, com `Location: https://136-248-80-75.sslip.io/actuator/health`.
 
   Se o Certificate não ficar `Ready`, investigar com `kubectl -n educare describe challenge` antes de qualquer pedido à produção.
-- [ ] 4.4 (CA08) Ensaiar o rollback no staging:
+
+  Verificado em 2026-11-01: emissor `C=US, O=Let's Encrypt, CN=(STAGING) Ersatz Emmer YR2`; `curl -k` responde `UP`; o HTTP responde `308 Permanent Redirect` com `Location: https://136-248-80-75.sslip.io/actuator/health`.
+- [x] 4.4 (CA08) Ensaiar o rollback no staging:
   - desligar o sync automático (`argocd app set educare --sync-policy none`);
   - aplicar o `ingress.yaml` anterior à change (`git show <commit-anterior>:deploy/k8s/ingress.yaml | kubectl -n educare apply -f -`);
   - apagar o Ingress `educare-backend-http` e o Middleware;
@@ -80,6 +84,8 @@
   - religar o sync (`argocd app set educare --sync-policy automated --auto-prune --self-heal`) e conferir que o estado da 4.3 volta, sem nova emissão (o Secret foi mantido).
 
   Verificar também que os passos do README para "Voltar para só HTTP" correspondem ao ensaio.
+
+  Verificado em 2026-11-01. O sync automático foi desligado e religado com `kubectl -n argocd patch application educare`, sem o CLI `argocd`. Pelo IP puro, `curl http://136.248.80.75/actuator/health` respondeu `UP`. Com o sync religado, o Argo CD recriou o `educare-backend-http` e o Middleware, e voltaram o `UP` em HTTPS e o `308`, sem emissão nova.
 - [ ] 4.5 PR 2 `dev` → `main` trocando a anotação para `cert-manager.io/cluster-issuer: letsencrypt`. Verificar `build` e `manifests` verdes, mergear sem o label e esperar o sync.
 - [ ] 4.6 (CA01, CA02, CA03) Com a produção:
   - `curl https://136-248-80-75.sslip.io/actuator/health`, sem `-k`, responde `200`;
