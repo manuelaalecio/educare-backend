@@ -43,9 +43,9 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * One test per Scenario of the {@code child} spec, end to end through the API with a real database. Users and
- * children are recreated before every test; unless a scenario says otherwise, requests are made by a
- * {@code COORDENADOR}.
+ * One test per Scenario of the {@code child} spec, end to end through the API with a real database. Users,
+ * children and classes are recreated before every test, with every child in "Turma 1" unless the scenario says
+ * otherwise; unless a scenario says otherwise, requests are made by a {@code COORDENADOR}.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc
@@ -79,6 +79,7 @@ class ChildScenarioTest {
 	@Autowired
 	private TestUsers testUsers;
 
+	private UUID turma1;
 	private UUID anaId;
 	private UUID brunoId;
 	private String adminBearer;
@@ -88,6 +89,7 @@ class ChildScenarioTest {
 	@BeforeEach
 	void setUp() throws Exception {
 		jdbcTemplate.update("DELETE FROM children");
+		jdbcTemplate.update("DELETE FROM classrooms");
 		jdbcTemplate.update("DELETE FROM users");
 		clock.setInstant(NOW);
 		testUsers.create("Administrador", ADMIN_LOGIN, PASSWORD, "COORDENADOR");
@@ -96,6 +98,7 @@ class ChildScenarioTest {
 		adminBearer = testUsers.bearer(ADMIN_LOGIN, PASSWORD);
 		anaBearer = testUsers.bearer(ANA_LOGIN, PASSWORD);
 		brunoBearer = testUsers.bearer(BRUNO_LOGIN, PASSWORD);
+		turma1 = createClassroom("Turma 1");
 	}
 
 	// ---------- Dados da criança ----------
@@ -172,7 +175,7 @@ class ChildScenarioTest {
 		postChild("{}").andExpect(status().isBadRequest())
 			.andExpect(content().contentType(PROBLEM_JSON))
 			.andExpect(jsonPath("$.errors[*].field").value(containsInAnyOrder("name", "birthDate", "cep", "address",
-					"neighborhood", "addressNumber", "city", "state")));
+					"neighborhood", "addressNumber", "city", "state", "classroomId")));
 		assertThat(countChildren()).isZero();
 	}
 
@@ -559,7 +562,10 @@ class ChildScenarioTest {
 
 		// when / then
 		perform(get(CHILDREN)).andExpect(status().isOk())
-			.andExpect(jsonPath("$.content[0].length()").value(5))
+			.andExpect(jsonPath("$.content[0].length()").value(6))
+			.andExpect(jsonPath("$.content[0].classroom.length()").value(2))
+			.andExpect(jsonPath("$.content[0].classroom.id").value(turma1.toString()))
+			.andExpect(jsonPath("$.content[0].classroom.name").value("Turma 1"))
 			.andExpect(jsonPath("$.content[0].id").exists())
 			.andExpect(jsonPath("$.content[0].name").value("Maria Clara Souza"))
 			.andExpect(jsonPath("$.content[0].birthDate").value("2018-05-10"))
@@ -835,13 +841,320 @@ class ChildScenarioTest {
 		assertThat(countChildren()).isZero();
 	}
 
+	// ---------- Turma obrigatória da criança ----------
+
+	@Test
+	@DisplayName("Turma obrigatória da criança — Scenario: Criança criada com turma")
+	void shouldCreateChildInClassroom() throws Exception {
+		// given
+		moveClockTo(Instant.parse("2026-10-01T13:00:00Z"));
+
+		// when
+		UUID id = idOf(postChild(body()).andExpect(status().isCreated())
+			.andExpect(jsonPath("$.classroom.id").value(turma1.toString()))
+			.andExpect(jsonPath("$.classroom.name").value("Turma 1"))
+			.andReturn());
+
+		// then
+		history(id).andExpect(jsonPath("$.length()").value(1))
+			.andExpect(jsonPath("$[0].classroomId").value(turma1.toString()))
+			.andExpect(jsonPath("$[0].classroomName").value("Turma 1"))
+			.andExpect(jsonPath("$[0].startDate").value("2026-10-01"))
+			.andExpect(jsonPath("$[0].endDate").isEmpty());
+	}
+
+	@Test
+	@DisplayName("Turma obrigatória da criança — Scenario: Criação sem turma")
+	void shouldRejectChildWithoutClassroom() throws Exception {
+		expectFieldError(postChild(body("classroomId", ABSENT)), "classroomId");
+		assertThat(countChildren()).isZero();
+	}
+
+	@Test
+	@DisplayName("Turma obrigatória da criança — Scenario: Criação sem turma e com outro campo inválido")
+	void shouldListClassroomWithOtherInvalidFields() throws Exception {
+		postChild(body("classroomId", ABSENT, "cep", "123")).andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.errors[*].field").value(containsInAnyOrder("classroomId", "cep")));
+	}
+
+	@Test
+	@DisplayName("Turma obrigatória da criança — Scenario: Criação com turma inexistente")
+	void shouldRejectChildInMissingClassroom() throws Exception {
+		postChild(body("classroomId", MISSING_ID)).andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.errors[0].field").value("classroomId"))
+			.andExpect(jsonPath("$.errors[0].message").value("Turma não encontrada"));
+		assertThat(countChildren()).isZero();
+		assertThat(countLinks()).isZero();
+	}
+
+	@Test
+	@DisplayName("Turma obrigatória da criança — Scenario: Criação com classroomId malformado")
+	void shouldRejectMalformedClassroomId() throws Exception {
+		expectFieldError(postChild(body("classroomId", "turma-1")), "classroomId");
+		assertThat(countChildren()).isZero();
+	}
+
+	@Test
+	@DisplayName("Turma obrigatória da criança — Scenario: Alteração sem turma")
+	void shouldRejectUpdateWithoutClassroom() throws Exception {
+		// given
+		UUID id = createChild();
+
+		// when / then
+		expectFieldError(putChild(id, body("name", "Maria Clara Lima", "classroomId", ABSENT)), "classroomId");
+		getChild(id).andExpect(jsonPath("$.name").value("Maria Clara Souza"))
+			.andExpect(jsonPath("$.classroom.name").value("Turma 1"));
+		history(id).andExpect(jsonPath("$.length()").value(1));
+	}
+
+	// ---------- Troca de turma com histórico ----------
+
+	@Test
+	@DisplayName("Troca de turma com histórico — Scenario: Troca para outra turma")
+	void shouldMoveChildToAnotherClassroom() throws Exception {
+		// given
+		UUID turma2 = createClassroom("Turma 2");
+		moveClockTo(Instant.parse("2026-10-01T13:00:00Z"));
+		UUID id = createChild();
+		moveClockTo(Instant.parse("2026-11-01T13:00:00Z"));
+
+		// when / then
+		putChild(id, body("classroomId", turma2.toString())).andExpect(status().isOk())
+			.andExpect(jsonPath("$.classroom.id").value(turma2.toString()))
+			.andExpect(jsonPath("$.classroom.name").value("Turma 2"));
+		history(id).andExpect(jsonPath("$.length()").value(2))
+			.andExpect(jsonPath("$[0].classroomName").value("Turma 2"))
+			.andExpect(jsonPath("$[0].startDate").value("2026-11-01"))
+			.andExpect(jsonPath("$[0].endDate").isEmpty())
+			.andExpect(jsonPath("$[1].classroomName").value("Turma 1"))
+			.andExpect(jsonPath("$[1].startDate").value("2026-10-01"))
+			.andExpect(jsonPath("$[1].endDate").value("2026-11-01"));
+	}
+
+	@Test
+	@DisplayName("Troca de turma com histórico — Scenario: Alteração mantendo a turma")
+	void shouldKeepLinkWhenClassroomIsTheSame() throws Exception {
+		// given
+		moveClockTo(Instant.parse("2026-10-01T13:00:00Z"));
+		UUID id = createChild();
+		moveClockTo(Instant.parse("2026-11-01T13:00:00Z"));
+
+		// when / then
+		putChild(id, body("name", "Maria Clara Lima")).andExpect(status().isOk())
+			.andExpect(jsonPath("$.name").value("Maria Clara Lima"))
+			.andExpect(jsonPath("$.classroom.name").value("Turma 1"));
+		history(id).andExpect(jsonPath("$.length()").value(1))
+			.andExpect(jsonPath("$[0].startDate").value("2026-10-01"))
+			.andExpect(jsonPath("$[0].endDate").isEmpty());
+	}
+
+	@Test
+	@DisplayName("Troca de turma com histórico — Scenario: Duas trocas no mesmo dia")
+	void shouldEndSameDayLinkWhenMovingTwiceOnSameDay() throws Exception {
+		// given
+		UUID turma2 = createClassroom("Turma 2");
+		UUID turma3 = createClassroom("Turma 3");
+		moveClockTo(Instant.parse("2026-10-01T13:00:00Z"));
+		UUID id = createChild();
+		moveClockTo(Instant.parse("2026-11-01T13:00:00Z"));
+
+		// when
+		putChild(id, body("classroomId", turma2.toString())).andExpect(status().isOk());
+		moveClockTo(Instant.parse("2026-11-01T18:00:00Z"));
+		putChild(id, body("classroomId", turma3.toString())).andExpect(status().isOk());
+
+		// then
+		getChild(id).andExpect(jsonPath("$.classroom.name").value("Turma 3"));
+		history(id).andExpect(jsonPath("$[*].classroomName").value(contains("Turma 3", "Turma 2", "Turma 1")))
+			.andExpect(jsonPath("$[0].startDate").value("2026-11-01"))
+			.andExpect(jsonPath("$[0].endDate").isEmpty())
+			.andExpect(jsonPath("$[1].startDate").value("2026-11-01"))
+			.andExpect(jsonPath("$[1].endDate").value("2026-11-01"))
+			.andExpect(jsonPath("$[2].startDate").value("2026-10-01"))
+			.andExpect(jsonPath("$[2].endDate").value("2026-11-01"));
+	}
+
+	@Test
+	@DisplayName("Troca de turma com histórico — Scenario: Troca para turma inexistente")
+	void shouldKeepClassroomWhenMovingToMissingClassroom() throws Exception {
+		// given
+		UUID id = createChild();
+
+		// when / then
+		putChild(id, body("classroomId", MISSING_ID)).andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.errors[0].field").value("classroomId"))
+			.andExpect(jsonPath("$.errors[0].message").value("Turma não encontrada"));
+		getChild(id).andExpect(jsonPath("$.classroom.name").value("Turma 1"));
+		history(id).andExpect(jsonPath("$.length()").value(1));
+	}
+
+	@Test
+	@DisplayName("Troca de turma com histórico — Scenario: Troca recusada por conflito")
+	void shouldKeepClassroomWhenMoveIsRejectedByConflict() throws Exception {
+		// given
+		UUID turma2 = createClassroom("Turma 2");
+		UUID id = createChild();
+		createChild("name", "Outra", "cpf", "52998224725");
+
+		// when / then
+		putChild(id, body("classroomId", turma2.toString(), "cpf", "52998224725")).andExpect(status().isConflict());
+		getChild(id).andExpect(jsonPath("$.classroom.name").value("Turma 1"));
+		history(id).andExpect(jsonPath("$.length()").value(1));
+	}
+
+	// ---------- Turma atual nas respostas de criança ----------
+
+	@Test
+	@DisplayName("Turma atual nas respostas de criança — Scenario: Consulta por id com a turma")
+	void shouldReturnCurrentClassroomWhenReadingChild() throws Exception {
+		// given
+		UUID id = createChild();
+
+		// when / then
+		getChild(id).andExpect(status().isOk())
+			.andExpect(jsonPath("$.classroom.id").value(turma1.toString()))
+			.andExpect(jsonPath("$.classroom.name").value("Turma 1"))
+			.andExpect(jsonPath("$.name").value("Maria Clara Souza"));
+	}
+
+	@Test
+	@DisplayName("Turma atual nas respostas de criança — Scenario: Turma renomeada")
+	void shouldReturnNewClassroomNameAfterRename() throws Exception {
+		// given
+		UUID id = createChild();
+		perform(put("/api/v1/classrooms/" + turma1).contentType(MediaType.APPLICATION_JSON)
+			.content("{\"name\": \"Maternal A\"}")).andExpect(status().isOk());
+
+		// when / then
+		getChild(id).andExpect(jsonPath("$.classroom.id").value(turma1.toString()))
+			.andExpect(jsonPath("$.classroom.name").value("Maternal A"));
+	}
+
+	// ---------- Histórico de turmas da criança ----------
+
+	@Test
+	@DisplayName("Histórico de turmas da criança — Scenario: Histórico de uma criança que nunca trocou de turma")
+	void shouldReturnSingleLinkWhenChildNeverMoved() throws Exception {
+		// given
+		moveClockTo(Instant.parse("2026-10-01T13:00:00Z"));
+		UUID id = createChild();
+		anaBearer = testUsers.bearer(ANA_LOGIN, PASSWORD);
+
+		// when / then
+		perform(anaBearer, get(CHILDREN + "/" + id + "/classrooms")).andExpect(status().isOk())
+			.andExpect(jsonPath("$.length()").value(1))
+			.andExpect(jsonPath("$[0].classroomId").value(turma1.toString()))
+			.andExpect(jsonPath("$[0].classroomName").value("Turma 1"))
+			.andExpect(jsonPath("$[0].startDate").value("2026-10-01"))
+			.andExpect(jsonPath("$[0].endDate").isEmpty());
+	}
+
+	@Test
+	@DisplayName("Histórico de turmas da criança — Scenario: Histórico de criança inexistente")
+	void shouldRespondNotFoundForHistoryOfMissingChild() throws Exception {
+		perform(get(CHILDREN + "/" + MISSING_ID + "/classrooms")).andExpect(status().isNotFound())
+			.andExpect(content().contentType(PROBLEM_JSON));
+	}
+
+	@Test
+	@DisplayName("Histórico de turmas da criança — Scenario: Histórico com id malformado")
+	void shouldRespondBadRequestForHistoryWithMalformedId() throws Exception {
+		perform(get(CHILDREN + "/abc/classrooms")).andExpect(status().isBadRequest())
+			.andExpect(content().contentType(PROBLEM_JSON));
+	}
+
+	@Test
+	@DisplayName("Histórico de turmas da criança — Scenario: Histórico sem token")
+	void shouldRejectHistoryWithoutToken() throws Exception {
+		// given
+		UUID id = createChild();
+
+		// when / then
+		mockMvc.perform(get(CHILDREN + "/" + id + "/classrooms")).andExpect(status().isUnauthorized())
+			.andExpect(content().contentType(PROBLEM_JSON));
+	}
+
+	// ---------- Exclusão da criança apaga o histórico de turmas ----------
+
+	@Test
+	@DisplayName("Exclusão da criança apaga o histórico de turmas — Scenario: Criança com dois vínculos excluída")
+	void shouldDeleteLinksWithChild() throws Exception {
+		// given
+		UUID turma2 = createClassroom("Turma 2");
+		UUID id = createChild();
+		putChild(id, body("classroomId", turma2.toString())).andExpect(status().isOk());
+
+		// when
+		perform(delete(CHILDREN + "/" + id)).andExpect(status().isNoContent());
+
+		// then
+		history(id).andExpect(status().isNotFound());
+		perform(get("/api/v1/classrooms/" + turma2)).andExpect(jsonPath("$.studentCount").value(0));
+		perform(delete("/api/v1/classrooms/" + turma1)).andExpect(status().isNoContent());
+	}
+
+	@Test
+	@DisplayName("Exclusão da criança apaga o histórico de turmas — Scenario: EDUCADOR não exclui criança com turma")
+	void shouldKeepChildAndLinksWhenEducatorTriesToDelete() throws Exception {
+		// given
+		UUID id = createChild();
+
+		// when / then
+		perform(anaBearer, delete(CHILDREN + "/" + id)).andExpect(status().isForbidden());
+		getChild(id).andExpect(jsonPath("$.classroom.name").value("Turma 1"));
+		history(id).andExpect(jsonPath("$.length()").value(1));
+	}
+
+	// ---------- Listar crianças: filtro por turma ----------
+
+	@Test
+	@DisplayName("Listar crianças com paginação e busca por nome — Scenario: Filtro por turma com busca por nome")
+	void shouldFilterByCurrentClassroomAndName() throws Exception {
+		// given
+		UUID turma2 = createClassroom("Turma 2");
+		createChild("name", "João Pedro");
+		createChild("name", "Ana Lima");
+		createChild("name", "Maria João", "classroomId", turma2.toString());
+		UUID joaoPaulo = createChild("name", "João Paulo");
+		putChild(joaoPaulo, body("name", "João Paulo", "classroomId", turma2.toString())).andExpect(status().isOk());
+
+		// when / then
+		perform(get(CHILDREN).param("classroomId", turma1.toString()).param("name", "joao")).andExpect(status().isOk())
+			.andExpect(jsonPath("$.content[*].name").value(contains("João Pedro")))
+			.andExpect(jsonPath("$.content[0].classroom.name").value("Turma 1"))
+			.andExpect(jsonPath("$.page.totalElements").value(1));
+	}
+
+	@Test
+	@DisplayName("Listar crianças com paginação e busca por nome — Scenario: Filtro por turma sem crianças ou inexistente")
+	void shouldReturnEmptyPageWhenClassroomHasNoChildrenOrDoesNotExist() throws Exception {
+		// given
+		UUID turma3 = createClassroom("Turma 3");
+		createChild();
+
+		// when / then
+		perform(get(CHILDREN).param("classroomId", turma3.toString())).andExpect(status().isOk())
+			.andExpect(jsonPath("$.content").value(empty()))
+			.andExpect(jsonPath("$.page.totalElements").value(0));
+		perform(get(CHILDREN).param("classroomId", MISSING_ID)).andExpect(status().isOk())
+			.andExpect(jsonPath("$.content").value(empty()))
+			.andExpect(jsonPath("$.page.totalElements").value(0));
+	}
+
+	@Test
+	@DisplayName("Listar crianças com paginação e busca por nome — Scenario: Filtro por turma malformado")
+	void shouldRejectMalformedClassroomFilter() throws Exception {
+		perform(get(CHILDREN).param("classroomId", "turma-1")).andExpect(status().isBadRequest())
+			.andExpect(content().contentType(PROBLEM_JSON));
+	}
+
 	// ---------- helpers ----------
 
 	/**
-	 * The body of a valid child with the required data only, changed by the given pairs of field and value
-	 * ({@link #ABSENT} leaves the field out).
+	 * The body of a valid child with the required data only, in "Turma 1", changed by the given pairs of field and
+	 * value ({@link #ABSENT} leaves the field out).
 	 */
-	private static String body(Object... fieldsAndValues) {
+	private String body(Object... fieldsAndValues) {
 		Map<String, Object> fields = new LinkedHashMap<>();
 		fields.put("name", "Maria Clara Souza");
 		fields.put("birthDate", "2018-05-10");
@@ -851,6 +1164,7 @@ class ChildScenarioTest {
 		fields.put("addressNumber", "1000");
 		fields.put("city", "São Paulo");
 		fields.put("state", "SP");
+		fields.put("classroomId", turma1.toString());
 		for (int i = 0; i < fieldsAndValues.length; i += 2) {
 			String field = (String) fieldsAndValues[i];
 			Object value = fieldsAndValues[i + 1];
@@ -871,6 +1185,20 @@ class ChildScenarioTest {
 	private void moveClockTo(Instant instant) throws Exception {
 		clock.setInstant(instant);
 		adminBearer = testUsers.bearer(ADMIN_LOGIN, PASSWORD);
+	}
+
+	private UUID createClassroom(String name) throws Exception {
+		MvcResult result = perform(post("/api/v1/classrooms").contentType(MediaType.APPLICATION_JSON)
+			.content("{\"name\": \"" + name + "\"}")).andExpect(status().isCreated()).andReturn();
+		return idOf(result);
+	}
+
+	private ResultActions history(UUID id) throws Exception {
+		return perform(get(CHILDREN + "/" + id + "/classrooms"));
+	}
+
+	private int countLinks() {
+		return jdbcTemplate.queryForObject("SELECT count(*) FROM child_classrooms", Integer.class);
 	}
 
 	private UUID createChild(Object... fieldsAndValues) throws Exception {

@@ -25,6 +25,7 @@ import com.manuelaalecio.educare_backend.classroom.application.ClassroomOverview
 import com.manuelaalecio.educare_backend.classroom.application.ClassroomService;
 import com.manuelaalecio.educare_backend.classroom.application.StudentCounts;
 import com.manuelaalecio.educare_backend.classroom.domain.Classroom;
+import com.manuelaalecio.educare_backend.classroom.domain.ClassroomHasHistoryException;
 import com.manuelaalecio.educare_backend.classroom.domain.ClassroomHasStudentsException;
 import com.manuelaalecio.educare_backend.classroom.domain.ClassroomNameAlreadyInUseException;
 import com.manuelaalecio.educare_backend.classroom.domain.ClassroomNotFoundException;
@@ -119,9 +120,14 @@ class ClassroomControllerTest {
 		then(classroomService).shouldHaveNoInteractions();
 	}
 
+	static Stream<Arguments> writeEndpoints() {
+		return endpoints().filter(arguments -> !String.valueOf(arguments.get()[0]).equals("list")
+				&& !String.valueOf(arguments.get()[0]).equals("findById"));
+	}
+
 	@ParameterizedTest(name = "{0}")
-	@MethodSource("endpoints")
-	void shouldRespondForbiddenProblemWithoutCallingServiceWhenUserIsNotCoordinator(String endpoint,
+	@MethodSource("writeEndpoints")
+	void shouldRespondForbiddenProblemWithoutCallingServiceWhenEducatorWrites(String endpoint,
 			Supplier<MockHttpServletRequestBuilder> request) throws Exception {
 		// when
 		ResultActions result = mockMvc.perform(request.get()
@@ -132,6 +138,22 @@ class ClassroomControllerTest {
 				.andExpect(content().contentType(PROBLEM_JSON))
 				.andExpect(jsonPath("$.status").value(403));
 		then(classroomService).shouldHaveNoInteractions();
+	}
+
+	@Test
+	void shouldLetEducatorListAndReadClassrooms() throws Exception {
+		// given
+		given(classroomService.list()).willReturn(List.of(overview(ID, "Turma 1", new StudentCounts(3, 1, 1))));
+		given(classroomService.findById(ID)).willReturn(overview(ID, "Turma 1", new StudentCounts(3, 1, 1)));
+
+		// when / then
+		mockMvc.perform(get(CLASSROOMS).header(HttpHeaders.AUTHORIZATION, accessTokens.bearer(USER_ID)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[0].name").value("Turma 1"));
+		mockMvc.perform(get(CLASSROOMS + "/{id}", ID).header(HttpHeaders.AUTHORIZATION, accessTokens.bearer(USER_ID)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.name").value("Turma 1"))
+				.andExpect(jsonPath("$.studentCount").value(3));
 	}
 
 	// ---------- POST /api/v1/classrooms ----------
@@ -404,7 +426,19 @@ class ClassroomControllerTest {
 		ResultActions result = performAsCoordinator(delete(CLASSROOMS + "/{id}", ID));
 
 		// then
-		expectConflict(result, "A turma tem alunos. Tire os alunos da turma antes de excluí-la");
+		expectConflict(result, "A turma tem crianças. Tire as crianças da turma antes de excluí-la");
+	}
+
+	@Test
+	void shouldRespondConflictWhenDeletingClassroomWithHistory() throws Exception {
+		// given
+		willThrow(new ClassroomHasHistoryException()).given(classroomService).delete(ID);
+
+		// when
+		ResultActions result = performAsCoordinator(delete(CLASSROOMS + "/{id}", ID));
+
+		// then
+		expectConflict(result, "A turma tem histórico de crianças e não pode ser excluída");
 	}
 
 	@Test

@@ -1,10 +1,12 @@
 package com.manuelaalecio.educare_backend.classroom.application;
 
+import java.sql.SQLException;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 import com.manuelaalecio.educare_backend.classroom.domain.Classroom;
+import com.manuelaalecio.educare_backend.classroom.domain.ClassroomHasHistoryException;
 import com.manuelaalecio.educare_backend.classroom.domain.ClassroomHasStudentsException;
 import com.manuelaalecio.educare_backend.classroom.domain.ClassroomNameAlreadyInUseException;
 import com.manuelaalecio.educare_backend.classroom.domain.ClassroomNotFoundException;
@@ -16,13 +18,16 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Use cases of the class registry. Every class is returned with its student counts, provided by the
+ * Use cases of the class registry. Every class is returned with its children counts, provided by the
  * {@link ClassroomStudentCounter}.
  */
 @Service
 @Transactional
 @RequiredArgsConstructor
 public class ClassroomService {
+
+	/** SQLState of a foreign key violation in PostgreSQL. */
+	private static final String FOREIGN_KEY_VIOLATION = "23503";
 
 	private final ClassroomRepository classroomRepository;
 	private final ClassroomStudentCounter studentCounter;
@@ -69,14 +74,28 @@ public class ClassroomService {
 	}
 
 	/**
-	 * Deletes the class for good, unless it has students.
+	 * Deletes the class for good, unless it has active children or some child has already left it (history).
+	 * The delete is flushed so a child linked meanwhile violates a foreign key here: any foreign key to the class
+	 * means it is in use, so the violation becomes a conflict without this module knowing the other tables.
 	 */
 	public void delete(UUID id) {
 		Classroom classroom = load(id);
 		if (studentCounter.countFor(id).hasStudents()) {
 			throw new ClassroomHasStudentsException();
 		}
-		classroomRepository.delete(classroom);
+		if (studentCounter.hasPastStudents(id)) {
+			throw new ClassroomHasHistoryException();
+		}
+		try {
+			classroomRepository.delete(classroom);
+			classroomRepository.flush();
+		}
+		catch (DataIntegrityViolationException ex) {
+			if (isForeignKeyViolation(ex)) {
+				throw new ClassroomHasStudentsException();
+			}
+			throw ex;
+		}
 	}
 
 	private Classroom load(UUID id) {
@@ -101,6 +120,18 @@ public class ClassroomService {
 			}
 			throw ex;
 		}
+	}
+
+	/**
+	 * Whether the cause chain has a foreign key violation (SQLState {@code 23503}).
+	 */
+	private static boolean isForeignKeyViolation(Throwable ex) {
+		for (Throwable cause = ex; cause != null; cause = cause.getCause()) {
+			if (cause instanceof SQLException sql && FOREIGN_KEY_VIOLATION.equals(sql.getSQLState())) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private static boolean violatesNameUniqueness(Throwable ex) {

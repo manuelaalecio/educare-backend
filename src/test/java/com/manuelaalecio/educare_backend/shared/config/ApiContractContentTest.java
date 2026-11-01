@@ -229,7 +229,7 @@ class ApiContractContentTest {
 
 	// ---------- children ----------
 
-	private static final String[] CHILD_REQUIRED_FIELDS = {"id", "name", "birthDate", "cep", "address",
+	private static final String[] CHILD_REQUIRED_FIELDS = {"id", "name", "birthDate", "classroom", "cep", "address",
 			"neighborhood", "addressNumber", "city", "state", "createdAt", "updatedAt"};
 
 	private static final String[] CHILD_OPTIONAL_FIELDS = {"addressComplement", "birthplace", "race", "gender",
@@ -264,8 +264,9 @@ class ApiContractContentTest {
 
 		// then
 		assertThat(required(page)).contains("content", "page");
-		assertThat(properties(item)).containsOnlyKeys("id", "name", "birthDate", "createdAt", "updatedAt");
-		assertThat(required(item)).containsExactlyInAnyOrder("id", "name", "birthDate", "createdAt", "updatedAt");
+		assertThat(properties(item)).containsOnlyKeys("id", "name", "birthDate", "classroom", "createdAt", "updatedAt");
+		assertThat(required(item)).containsExactlyInAnyOrder("id", "name", "birthDate", "classroom", "createdAt",
+				"updatedAt");
 	}
 
 	@Test
@@ -291,6 +292,72 @@ class ApiContractContentTest {
 		// when / then
 		assertThat(responses("/api/v1/children/{id}", "delete")).containsKey("204").doesNotContainKey("200");
 		assertThat(response("/api/v1/children/{id}", "delete", "204")).doesNotContainKey("content");
+	}
+
+	@Test
+	void shouldDeclareClassroomIdAsRequiredWhenReadingChildRequest() {
+		// when
+		String ref = contract.read(operationPath("/api/v1/children", "post")
+				+ ".requestBody.content['application/json'].schema.$ref");
+		Map<String, Object> request = schema(ref);
+
+		// then
+		assertThat(required(request)).contains("classroomId");
+	}
+
+	@Test
+	void shouldDeclareClassroomIdFilterWhenReadingChildListing() {
+		// when
+		List<String> parameters = contract.read("$.paths['/api/v1/children'].get.parameters[*].name");
+
+		// then
+		assertThat(parameters).contains("name", "classroomId");
+	}
+
+	@Test
+	void shouldDeclareRequiredClassroomFieldsWhenReadingCurrentClassroomOfChild() {
+		// when
+		String ref = contract.read("$.components.schemas.ChildResponse.properties.classroom.$ref");
+
+		// then
+		assertThat(required(schema(ref))).containsExactlyInAnyOrder("id", "name");
+	}
+
+	@Test
+	void shouldDeclareHistoryItemsWithOptionalEndDateWhenReadingChildClassroomHistory() {
+		// when
+		String itemRef = contract.read("$.paths['/api/v1/children/{id}/classrooms'].get.responses['200']"
+				+ ".content['application/json'].schema.items.$ref");
+		Map<String, Object> item = schema(itemRef);
+
+		// then
+		assertThat(properties(item)).containsOnlyKeys("classroomId", "classroomName", "startDate", "endDate");
+		assertThat(required(item)).containsExactlyInAnyOrder("classroomId", "classroomName", "startDate");
+		assertProblemResponses("/api/v1/children/{id}/classrooms", "get", "400", "401", "404");
+		assertThat(responses("/api/v1/children/{id}/classrooms", "get")).doesNotContainKey("403");
+	}
+
+	// ---------- classrooms ----------
+
+	@ParameterizedTest
+	@CsvSource({"/api/v1/classrooms, get", "/api/v1/classrooms/{id}, get"})
+	void shouldNotDeclareForbiddenWhenAnyAuthenticatedUserReadsClassrooms(String path, String method) {
+		// when / then
+		assertProblemResponses(path, method, "401");
+		assertThat(responses(path, method)).doesNotContainKey("403");
+	}
+
+	@ParameterizedTest
+	@CsvSource({"/api/v1/classrooms, post", "/api/v1/classrooms/{id}, put", "/api/v1/classrooms/{id}, delete"})
+	void shouldDeclareForbiddenWhenOnlyCoordinatorManagesClassrooms(String path, String method) {
+		// when / then
+		assertProblemResponses(path, method, "401", "403");
+	}
+
+	@Test
+	void shouldDeclareConflictWhenReadingClassroomDeletion() {
+		// when / then
+		assertProblemResponses("/api/v1/classrooms/{id}", "delete", "404", "409");
 	}
 
 	private static void assertFullChild(Map<String, Object> schema) {

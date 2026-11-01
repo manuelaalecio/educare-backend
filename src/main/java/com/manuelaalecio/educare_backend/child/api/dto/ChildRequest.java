@@ -2,6 +2,7 @@ package com.manuelaalecio.educare_backend.child.api.dto;
 
 import java.time.LocalDate;
 import java.util.Locale;
+import java.util.UUID;
 
 import com.manuelaalecio.educare_backend.child.api.ValidBirthRegistrationNumber;
 import com.manuelaalecio.educare_backend.child.api.ValidCpf;
@@ -12,9 +13,9 @@ import jakarta.validation.constraints.Size;
 
 /**
  * Body of {@code POST /api/v1/children} and {@code PUT /api/v1/children/{id}}: the update replaces the whole child,
- * so both accept the same fields and rules. The compact constructor strips every text and turns blank texts into
- * {@code null} before Bean Validation runs, so "required" and the maximum lengths are checked on the value that will
- * be stored; it also upper-cases the state.
+ * so both accept the same fields and rules, including the class (required: every child is in one class). The
+ * compact constructor strips every text and turns blank texts into {@code null} before Bean Validation runs, so
+ * "required" and the maximum lengths are checked on the value that will be stored; it also upper-cases the state.
  */
 public record ChildRequest(
 
@@ -93,7 +94,10 @@ public record ChildRequest(
 		String medicalObservation,
 
 		@ValidBirthRegistrationNumber
-		String birthCertificateNumber) {
+		String birthCertificateNumber,
+
+		@NotNull(message = "é obrigatória")
+		UUID classroomId) {
 
 	public ChildRequest {
 		name = clean(name);

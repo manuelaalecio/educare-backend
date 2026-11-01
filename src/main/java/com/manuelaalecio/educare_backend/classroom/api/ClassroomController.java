@@ -31,11 +31,13 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.util.UriComponentsBuilder;
 
+/**
+ * Registry of the classes. Every authenticated user reads the classes (the children form needs them); only
+ * {@code COORDENADOR} creates, renames and deletes.
+ */
 @RestController
 @RequestMapping(ClassroomController.BASE_PATH)
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('COORDENADOR')")
-@ForbiddenResponse
 public class ClassroomController {
 
 	static final String BASE_PATH = "/api/v1/classrooms";
@@ -44,6 +46,8 @@ public class ClassroomController {
 	private final ClassroomMapper classroomMapper;
 
 	@PostMapping
+	@PreAuthorize("hasRole('COORDENADOR')")
+	@ForbiddenResponse
 	@ApiResponse(responseCode = "201", description = "Created", headers = @Header(name = "Location",
 			description = "Path of the created class", schema = @Schema(type = "string", format = "uri")))
 	@BadRequestResponse
@@ -73,6 +77,8 @@ public class ClassroomController {
 	}
 
 	@PutMapping("/{id}")
+	@PreAuthorize("hasRole('COORDENADOR')")
+	@ForbiddenResponse
 	@ResponseStatus(HttpStatus.OK)
 	@BadRequestResponse
 	@NotFoundResponse
@@ -82,6 +88,8 @@ public class ClassroomController {
 	}
 
 	@DeleteMapping("/{id}")
+	@PreAuthorize("hasRole('COORDENADOR')")
+	@ForbiddenResponse
 	@ResponseStatus(HttpStatus.NO_CONTENT)
 	@BadRequestResponse
 	@NotFoundResponse

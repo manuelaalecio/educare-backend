@@ -1,9 +1,11 @@
 package com.manuelaalecio.educare_backend.child.api;
 
 import java.net.URI;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
+import com.manuelaalecio.educare_backend.child.api.dto.ChildClassroomResponse;
 import com.manuelaalecio.educare_backend.child.api.dto.ChildRequest;
 import com.manuelaalecio.educare_backend.child.api.dto.ChildResponse;
 import com.manuelaalecio.educare_backend.child.api.dto.ChildSummaryResponse;
@@ -59,28 +61,30 @@ public class ChildController {
 	@BadRequestResponse
 	@ConflictResponse
 	public ResponseEntity<ChildResponse> create(@Valid @RequestBody ChildRequest request) {
-		ChildResponse created = childMapper.toResponse(childService.create(childMapper.toDetails(request)));
+		ChildResponse created = childMapper
+			.toResponse(childService.create(childMapper.toDetails(request), request.classroomId()));
 		URI location = UriComponentsBuilder.fromPath(BASE_PATH).path("/{id}").buildAndExpand(created.id()).toUri();
 		return ResponseEntity.created(location).body(created);
 	}
 
 	/**
-	 * A page of children, each with only the list fields.
+	 * A page of children, each with only the list fields and the current class.
 	 *
 	 * @param name part of the name, compared ignoring case and accents; ignored when blank
+	 * @param classroomId only the children currently in this class
 	 */
 	@GetMapping
 	// runtime no-op, so that springdoc documents the 200 next to the declared errors (see AuthController.login)
 	@ResponseStatus(HttpStatus.OK)
 	@BadRequestResponse
 	public PagedModel<ChildSummaryResponse> list(@RequestParam(required = false) String name,
-			@PageableDefault(size = 20, sort = "name") Pageable pageable) {
+			@RequestParam(required = false) UUID classroomId, @PageableDefault(size = 20, sort = "name") Pageable pageable) {
 		for (Sort.Order order : pageable.getSort()) {
 			if (!SORTABLE_PROPERTIES.contains(order.getProperty())) {
 				throw new InvalidSortPropertyException(order.getProperty());
 			}
 		}
-		return new PagedModel<>(childService.list(name, pageable).map(childMapper::toSummary));
+		return new PagedModel<>(childService.list(name, classroomId, pageable).map(childMapper::toSummary));
 	}
 
 	@GetMapping("/{id}")
@@ -91,13 +95,24 @@ public class ChildController {
 		return childMapper.toResponse(childService.findById(id));
 	}
 
+	/**
+	 * Every class the child has been in, the most recent first.
+	 */
+	@GetMapping("/{id}/classrooms")
+	@ResponseStatus(HttpStatus.OK)
+	@BadRequestResponse
+	@NotFoundResponse
+	public List<ChildClassroomResponse> history(@PathVariable UUID id) {
+		return childService.history(id).stream().map(childMapper::toHistoryItem).toList();
+	}
+
 	@PutMapping("/{id}")
 	@ResponseStatus(HttpStatus.OK)
 	@BadRequestResponse
 	@NotFoundResponse
 	@ConflictResponse
 	public ChildResponse update(@PathVariable UUID id, @Valid @RequestBody ChildRequest request) {
-		return childMapper.toResponse(childService.update(id, childMapper.toDetails(request)));
+		return childMapper.toResponse(childService.update(id, childMapper.toDetails(request), request.classroomId()));
 	}
 
 	@DeleteMapping("/{id}")

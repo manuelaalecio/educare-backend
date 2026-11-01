@@ -28,7 +28,7 @@ public class Classroom extends BaseEntity {
 	}
 
 	/**
-	 * Replaces the name, stored without leading and trailing spaces. The students of the class do not change.
+	 * Replaces the name, stored without leading and trailing spaces. The children of the class do not change.
 	 */
 	public void rename(String name) {
 		this.name = normalizeName(name);

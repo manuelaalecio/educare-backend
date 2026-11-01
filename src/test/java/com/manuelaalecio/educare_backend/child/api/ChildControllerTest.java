@@ -21,6 +21,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -28,13 +29,19 @@ import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 import com.manuelaalecio.educare_backend.child.ChildDetailsBuilder;
+import com.manuelaalecio.educare_backend.child.application.ChildClassroomView;
 import com.manuelaalecio.educare_backend.child.application.ChildService;
+import com.manuelaalecio.educare_backend.child.application.ChildSummaryView;
+import com.manuelaalecio.educare_backend.child.application.ChildView;
 import com.manuelaalecio.educare_backend.child.domain.BirthCertificateAlreadyInUseException;
 import com.manuelaalecio.educare_backend.child.domain.BirthDateInFutureException;
 import com.manuelaalecio.educare_backend.child.domain.Child;
+import com.manuelaalecio.educare_backend.child.domain.ChildClassroom;
 import com.manuelaalecio.educare_backend.child.domain.ChildNotFoundException;
+import com.manuelaalecio.educare_backend.child.domain.ClassroomNotFoundForChildException;
 import com.manuelaalecio.educare_backend.child.domain.CpfAlreadyInUseException;
 import com.manuelaalecio.educare_backend.child.domain.RgAlreadyInUseException;
+import com.manuelaalecio.educare_backend.classroom.application.ClassroomRef;
 import com.manuelaalecio.educare_backend.shared.config.ClockConfiguration;
 import com.manuelaalecio.educare_backend.shared.error.GlobalExceptionHandler;
 import com.manuelaalecio.educare_backend.shared.security.AuthenticatedUser;
@@ -71,6 +78,9 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 class ChildControllerTest {
 
 	private static final String CHILDREN = "/api/v1/children";
+	private static final UUID TURMA_1 = UUID.fromString("0190f4a2-0000-7000-8000-0000000000c1");
+	private static final UUID TURMA_2 = UUID.fromString("0190f4a2-0000-7000-8000-0000000000c2");
+	private static final ClassroomRef TURMA_1_REF = new ClassroomRef(TURMA_1, "Turma 1");
 	private static final UUID ID = UUID.fromString("0190f4a2-0000-7000-8000-000000000001");
 	private static final UUID COORDINATOR_ID = UUID.fromString("0190f4a2-0000-7000-8000-000000000010");
 	private static final UUID EDUCATOR_ID = UUID.fromString("0190f4a2-0000-7000-8000-000000000020");
@@ -80,7 +90,7 @@ class ChildControllerTest {
 	private static final String VALID_BODY = """
 			{"name": "Maria Clara Souza", "birthDate": "2018-05-10", "cep": "01310-100",
 			 "address": "Avenida Paulista", "neighborhood": "Bela Vista", "addressNumber": "1000",
-			 "city": "São Paulo", "state": "SP"}""";
+			 "city": "São Paulo", "state": "SP", "classroomId": "0190f4a2-0000-7000-8000-0000000000c1"}""";
 
 	@Autowired
 	private MockMvc mockMvc;
@@ -110,6 +120,8 @@ class ChildControllerTest {
 				Arguments.of("list", (Supplier<MockHttpServletRequestBuilder>) () -> get(CHILDREN)),
 				Arguments.of("findById", (Supplier<MockHttpServletRequestBuilder>) () -> get(CHILDREN + "/{id}", ID)),
 				Arguments.of("update", (Supplier<MockHttpServletRequestBuilder>) () -> putJson(VALID_BODY)),
+				Arguments.of("history", (Supplier<MockHttpServletRequestBuilder>) () ->
+						get(CHILDREN + "/{id}/classrooms", ID)),
 				Arguments.of("delete", (Supplier<MockHttpServletRequestBuilder>) () ->
 						delete(CHILDREN + "/{id}", ID)));
 	}
@@ -127,8 +139,8 @@ class ChildControllerTest {
 	@Test
 	void shouldLetEducatorCreateAndUpdateChild() throws Exception {
 		// given
-		given(childService.create(any())).willReturn(stored(aChild()));
-		given(childService.update(eq(ID), any())).willReturn(stored(aChild()));
+		given(childService.create(any(), any())).willReturn(view(aChild()));
+		given(childService.update(eq(ID), any(), any())).willReturn(view(aChild()));
 
 		// when / then
 		performAs(EDUCATOR_ID, postJson(VALID_BODY)).andExpect(status().isCreated());
@@ -148,7 +160,7 @@ class ChildControllerTest {
 	@Test
 	void shouldCreateChildWithLocationAndFullBodyWhenRequestIsValid() throws Exception {
 		// given
-		given(childService.create(any())).willReturn(stored(aCompleteChild()));
+		given(childService.create(any(), any())).willReturn(view(aCompleteChild()));
 
 		// when
 		ResultActions result = perform(postJson(VALID_BODY));
@@ -174,7 +186,7 @@ class ChildControllerTest {
 	@Test
 	void shouldPassStrippedAndUpperCasedDataWhenCreating() throws Exception {
 		// given
-		given(childService.create(any())).willReturn(stored(aChild()));
+		given(childService.create(any(), any())).willReturn(view(aChild()));
 
 		// when
 		perform(postJson(VALID_BODY.replace("\"SP\"", "\"sp\"").replace("\"Maria Clara Souza\"",
@@ -183,7 +195,7 @@ class ChildControllerTest {
 
 		// then
 		then(childService).should()
-			.create(aChild().cep("01310-100").build());
+			.create(aChild().cep("01310-100").build(), TURMA_1);
 	}
 
 	@Test
@@ -191,7 +203,7 @@ class ChildControllerTest {
 		perform(postJson("{}")).andExpect(status().isBadRequest())
 			.andExpect(content().contentType(PROBLEM_JSON))
 			.andExpect(jsonPath("$.errors[*].field").value(containsInAnyOrder("name", "birthDate", "cep", "address",
-					"neighborhood", "addressNumber", "city", "state")));
+					"neighborhood", "addressNumber", "city", "state", "classroomId")));
 		then(childService).shouldHaveNoInteractions();
 	}
 
@@ -228,7 +240,7 @@ class ChildControllerTest {
 	@Test
 	void shouldRespondFieldErrorWhenBirthDateIsInFuture() throws Exception {
 		// given
-		given(childService.create(any())).willThrow(new BirthDateInFutureException());
+		given(childService.create(any(), any())).willThrow(new BirthDateInFutureException());
 
 		// when / then
 		perform(postJson(VALID_BODY)).andExpect(status().isBadRequest())
@@ -255,7 +267,7 @@ class ChildControllerTest {
 	void shouldRespondConflictWithoutDocumentWhenDocumentIsInUse(RuntimeException conflict, String detail)
 			throws Exception {
 		// given
-		given(childService.create(any())).willThrow(conflict);
+		given(childService.create(any(), any())).willThrow(conflict);
 
 		// when / then
 		perform(postJson(withField("cpf", "\"529.982.247-25\"")
@@ -268,14 +280,54 @@ class ChildControllerTest {
 			.andExpect(content().string(not(containsString("10453901552"))));
 	}
 
+	@Test
+	void shouldPassClassroomAndReturnItWhenCreating() throws Exception {
+		// given
+		given(childService.create(any(), eq(TURMA_1))).willReturn(view(aChild()));
+
+		// when / then
+		perform(postJson(VALID_BODY)).andExpect(status().isCreated())
+			.andExpect(jsonPath("$.classroom.id").value(TURMA_1.toString()))
+			.andExpect(jsonPath("$.classroom.name").value("Turma 1"));
+	}
+
+	@Test
+	void shouldRespondFieldErrorWhenClassroomIsMissing() throws Exception {
+		perform(postJson(VALID_BODY.replace(", \"classroomId\": \"" + TURMA_1 + "\"", "")))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.errors.length()").value(1))
+			.andExpect(jsonPath("$.errors[0].field").value("classroomId"));
+		then(childService).shouldHaveNoInteractions();
+	}
+
+	@Test
+	void shouldRespondFieldErrorWhenClassroomIdIsMalformedInBody() throws Exception {
+		perform(postJson(withField("classroomId", "\"turma-1\""))).andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.errors.length()").value(1))
+			.andExpect(jsonPath("$.errors[0].field").value("classroomId"));
+		then(childService).shouldHaveNoInteractions();
+	}
+
+	@Test
+	void shouldRespondFieldErrorWhenClassroomDoesNotExist() throws Exception {
+		// given
+		given(childService.create(any(), any())).willThrow(new ClassroomNotFoundForChildException());
+
+		// when / then
+		perform(postJson(VALID_BODY)).andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.errors[0].field").value("classroomId"))
+			.andExpect(jsonPath("$.errors[0].message").value("Turma não encontrada"));
+	}
+
 	// ---------- list ----------
 
 	@Test
 	void shouldListSummariesWithDefaultPageWhenNoParameterIsGiven() throws Exception {
 		// given
 		Pageable expected = PageRequest.of(0, 20, Sort.by("name"));
-		given(childService.list(null, expected))
-			.willReturn(new PageImpl<>(List.of(stored(aCompleteChild())), expected, 1));
+		given(childService.list(null, null, expected))
+			.willReturn(new PageImpl<>(List.of(new ChildSummaryView(stored(aCompleteChild()), TURMA_1_REF)), expected,
+					1));
 
 		// when
 		ResultActions result = perform(get(CHILDREN));
@@ -288,7 +340,10 @@ class ChildControllerTest {
 			.andExpect(jsonPath("$.content[0].birthDate").value("2018-05-10"))
 			.andExpect(jsonPath("$.content[0].createdAt").value("2026-03-01T10:00:00Z"))
 			.andExpect(jsonPath("$.content[0].updatedAt").value("2026-03-02T09:00:00Z"))
-			.andExpect(jsonPath("$.content[0].length()").value(5))
+			.andExpect(jsonPath("$.content[0].classroom.id").value(TURMA_1.toString()))
+			.andExpect(jsonPath("$.content[0].classroom.name").value("Turma 1"))
+			.andExpect(jsonPath("$.content[0].classroom.length()").value(2))
+			.andExpect(jsonPath("$.content[0].length()").value(6))
 			.andExpect(jsonPath("$.page.size").value(20))
 			.andExpect(jsonPath("$.page.number").value(0))
 			.andExpect(jsonPath("$.page.totalElements").value(1))
@@ -299,19 +354,20 @@ class ChildControllerTest {
 	void shouldPassNameAndSortWhenGiven() throws Exception {
 		// given
 		Pageable expected = PageRequest.of(1, 5, Sort.by(Sort.Direction.DESC, "birthDate"));
-		given(childService.list("joao", expected)).willReturn(new PageImpl<>(List.of(), expected, 0));
+		given(childService.list("joao", TURMA_1, expected)).willReturn(new PageImpl<>(List.of(), expected, 0));
 
 		// when / then
-		perform(get(CHILDREN).param("name", "joao").param("page", "1").param("size", "5")
+		perform(get(CHILDREN).param("name", "joao").param("classroomId", TURMA_1.toString()).param("page", "1")
+			.param("size", "5")
 			.param("sort", "birthDate,desc")).andExpect(status().isOk());
-		then(childService).should().list("joao", expected);
+		then(childService).should().list("joao", TURMA_1, expected);
 	}
 
 	@Test
 	void shouldCapPageSizeWhenItIsAboveMaximum() throws Exception {
 		// given
-		given(childService.list(eq(null), any())).willAnswer(invocation ->
-				new PageImpl<>(List.of(), invocation.getArgument(1, Pageable.class), 0));
+		given(childService.list(eq(null), eq(null), any())).willAnswer(invocation ->
+				new PageImpl<>(List.of(), invocation.getArgument(2, Pageable.class), 0));
 
 		// when / then
 		perform(get(CHILDREN).param("size", "500")).andExpect(status().isOk())
@@ -326,15 +382,64 @@ class ChildControllerTest {
 		then(childService).shouldHaveNoInteractions();
 	}
 
+	@Test
+	void shouldRespondBadRequestWhenClassroomFilterIsMalformed() throws Exception {
+		perform(get(CHILDREN).param("classroomId", "turma-1")).andExpect(status().isBadRequest())
+			.andExpect(content().contentType(PROBLEM_JSON));
+		then(childService).shouldHaveNoInteractions();
+	}
+
+	// ---------- history ----------
+
+	@Test
+	void shouldReturnHistoryMostRecentFirstWhenChildExists() throws Exception {
+		// given
+		ChildClassroom old = ChildClassroom.open(ID, TURMA_1, LocalDate.of(2026, 10, 1));
+		old.close(LocalDate.of(2026, 11, 1));
+		ChildClassroom current = ChildClassroom.open(ID, TURMA_2, LocalDate.of(2026, 11, 1));
+		given(childService.history(ID)).willReturn(List.of(
+				new ChildClassroomView(current, new ClassroomRef(TURMA_2, "Turma 2")),
+				new ChildClassroomView(old, TURMA_1_REF)));
+
+		// when / then
+		performAs(EDUCATOR_ID, get(CHILDREN + "/{id}/classrooms", ID)).andExpect(status().isOk())
+			.andExpect(jsonPath("$.length()").value(2))
+			.andExpect(jsonPath("$[0].classroomId").value(TURMA_2.toString()))
+			.andExpect(jsonPath("$[0].classroomName").value("Turma 2"))
+			.andExpect(jsonPath("$[0].startDate").value("2026-11-01"))
+			.andExpect(jsonPath("$[0].endDate").isEmpty())
+			.andExpect(jsonPath("$[1].classroomName").value("Turma 1"))
+			.andExpect(jsonPath("$[1].startDate").value("2026-10-01"))
+			.andExpect(jsonPath("$[1].endDate").value("2026-11-01"));
+	}
+
+	@Test
+	void shouldRespondNotFoundWhenReadingHistoryOfMissingChild() throws Exception {
+		// given
+		given(childService.history(ID)).willThrow(new ChildNotFoundException());
+
+		// when / then
+		perform(get(CHILDREN + "/{id}/classrooms", ID)).andExpect(status().isNotFound())
+			.andExpect(content().contentType(PROBLEM_JSON));
+	}
+
+	@Test
+	void shouldRespondBadRequestWhenReadingHistoryWithMalformedId() throws Exception {
+		perform(get(CHILDREN + "/abc/classrooms")).andExpect(status().isBadRequest());
+		then(childService).shouldHaveNoInteractions();
+	}
+
 	// ---------- findById ----------
 
 	@Test
 	void shouldReturnFullChildWhenItExists() throws Exception {
 		// given
-		given(childService.findById(ID)).willReturn(stored(aChild()));
+		given(childService.findById(ID)).willReturn(view(aChild()));
 
 		// when / then
 		perform(get(CHILDREN + "/{id}", ID)).andExpect(status().isOk())
+			.andExpect(jsonPath("$.classroom.id").value(TURMA_1.toString()))
+			.andExpect(jsonPath("$.classroom.name").value("Turma 1"))
 			.andExpect(jsonPath("$.id").value(ID.toString()))
 			.andExpect(jsonPath("$.cpf").isEmpty())
 			.andExpect(jsonPath("$.birthCertificateNumber").isEmpty())
@@ -364,7 +469,7 @@ class ChildControllerTest {
 	@Test
 	void shouldReturnUpdatedChildWhenUpdateIsValid() throws Exception {
 		// given
-		given(childService.update(eq(ID), any())).willReturn(stored(aChild().neighborhood("Consolação")));
+		given(childService.update(eq(ID), any(), any())).willReturn(view(aChild().neighborhood("Consolação")));
 
 		// when / then
 		perform(putJson(VALID_BODY)).andExpect(status().isOk())
@@ -382,7 +487,7 @@ class ChildControllerTest {
 	@Test
 	void shouldRespondNotFoundWhenUpdatingMissingChild() throws Exception {
 		// given
-		given(childService.update(eq(ID), any())).willThrow(new ChildNotFoundException());
+		given(childService.update(eq(ID), any(), any())).willThrow(new ChildNotFoundException());
 
 		// when / then
 		perform(putJson(VALID_BODY)).andExpect(status().isNotFound());
@@ -391,7 +496,7 @@ class ChildControllerTest {
 	@Test
 	void shouldRespondConflictWhenUpdateUsesCpfOfAnotherChild() throws Exception {
 		// given
-		given(childService.update(eq(ID), any())).willThrow(new CpfAlreadyInUseException());
+		given(childService.update(eq(ID), any(), any())).willThrow(new CpfAlreadyInUseException());
 
 		// when / then
 		perform(putJson(withField("cpf", "\"52998224725\""))).andExpect(status().isConflict())
@@ -435,6 +540,10 @@ class ChildControllerTest {
 	 */
 	private static String withField(String field, String jsonValue) {
 		return VALID_BODY.substring(0, VALID_BODY.lastIndexOf('}')) + ", \"" + field + "\": " + jsonValue + "}";
+	}
+
+	private static ChildView view(ChildDetailsBuilder details) {
+		return new ChildView(stored(details), TURMA_1_REF);
 	}
 
 	private static Child stored(ChildDetailsBuilder details) {

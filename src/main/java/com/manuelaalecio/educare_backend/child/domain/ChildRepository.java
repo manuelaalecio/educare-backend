@@ -1,10 +1,12 @@
 package com.manuelaalecio.educare_backend.child.domain;
 
+import java.util.Optional;
 import java.util.UUID;
 
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 
 /**
@@ -12,7 +14,7 @@ import org.springframework.data.jpa.repository.Query;
  * reported by the database when a concurrent save repeats a document, so the service can still turn them into
  * conflicts.
  */
-public interface ChildRepository extends JpaRepository<Child, UUID> {
+public interface ChildRepository extends JpaRepository<Child, UUID>, JpaSpecificationExecutor<Child> {
 
 	String CPF_UNIQUE_CONSTRAINT = "children_cpf_key";
 
@@ -33,16 +35,11 @@ public interface ChildRepository extends JpaRepository<Child, UUID> {
 	boolean existsByBirthCertificateNumberAndIdNot(String birthCertificateNumber, UUID id);
 
 	/**
-	 * Children whose name matches the pattern ignoring case and accents, with {@code \} as the escape character.
-	 * {@code immutable_unaccent} is the function created by the classrooms migration (V6).
-	 *
-	 * @param pattern a {@code LIKE} pattern built by the caller (already wrapped in {@code %} and escaped)
+	 * Loads the child locking its row until the end of the transaction, so concurrent updates of the same child
+	 * (and of its class) run one after the other.
 	 */
-	@Query("""
-			select c from Child c
-			where lower(function('immutable_unaccent', c.name)) like lower(function('immutable_unaccent', :pattern))
-			escape '\\'
-			""")
-	Page<Child> searchByName(String pattern, Pageable pageable);
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("select c from Child c where c.id = :id")
+	Optional<Child> findByIdForUpdate(UUID id);
 
 }

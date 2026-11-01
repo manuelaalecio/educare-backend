@@ -53,6 +53,31 @@
         ],
         "type" : "object"
       },
+      "ChildClassroomResponse" : {
+        "properties" : {
+          "classroomId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "classroomName" : {
+            "type" : "string"
+          },
+          "endDate" : {
+            "format" : "date",
+            "type" : "string"
+          },
+          "startDate" : {
+            "format" : "date",
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "classroomId",
+          "classroomName",
+          "startDate"
+        ],
+        "type" : "object"
+      },
       "ChildRequest" : {
         "properties" : {
           "address" : {
@@ -95,6 +120,10 @@
           "city" : {
             "maxLength" : 100,
             "minLength" : 0,
+            "type" : "string"
+          },
+          "classroomId" : {
+            "format" : "uuid",
             "type" : "string"
           },
           "cpf" : {
@@ -165,6 +194,7 @@
           "birthDate",
           "cep",
           "city",
+          "classroomId",
           "name",
           "neighborhood",
           "state"
@@ -200,6 +230,9 @@
           },
           "city" : {
             "type" : "string"
+          },
+          "classroom" : {
+            "$ref" : "#/components/schemas/ClassroomRefResponse"
           },
           "cpf" : {
             "type" : "string"
@@ -259,6 +292,7 @@
           "birthDate",
           "cep",
           "city",
+          "classroom",
           "createdAt",
           "id",
           "name",
@@ -273,6 +307,9 @@
           "birthDate" : {
             "format" : "date",
             "type" : "string"
+          },
+          "classroom" : {
+            "$ref" : "#/components/schemas/ClassroomRefResponse"
           },
           "createdAt" : {
             "format" : "date-time",
@@ -292,10 +329,27 @@
         },
         "required" : [
           "birthDate",
+          "classroom",
           "createdAt",
           "id",
           "name",
           "updatedAt"
+        ],
+        "type" : "object"
+      },
+      "ClassroomRefResponse" : {
+        "properties" : {
+          "id" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "name" : {
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "id",
+          "name"
         ],
         "type" : "object"
       },
@@ -810,6 +864,15 @@
           },
           {
             "in" : "query",
+            "name" : "classroomId",
+            "required" : false,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          },
+          {
+            "in" : "query",
             "name" : "pageable",
             "required" : true,
             "schema" : {
@@ -1124,6 +1187,70 @@
         ]
       }
     },
+    "/api/v1/children/{id}/classrooms" : {
+      "get" : {
+        "operationId" : "history",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "id",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/ChildClassroomResponse"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Bad Request"
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Unauthorized"
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Not Found"
+          }
+        },
+        "tags" : [
+          "child-controller"
+        ]
+      }
+    },
     "/api/v1/classrooms" : {
       "get" : {
         "operationId" : "list_1",
@@ -1150,16 +1277,6 @@
               }
             },
             "description" : "Unauthorized"
-          },
-          "403" : {
-            "content" : {
-              "application/problem+json" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/ProblemDetail"
-                }
-              }
-            },
-            "description" : "Forbidden"
           }
         },
         "tags" : [
@@ -1361,16 +1478,6 @@
               }
             },
             "description" : "Unauthorized"
-          },
-          "403" : {
-            "content" : {
-              "application/problem+json" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/ProblemDetail"
-                }
-              }
-            },
-            "description" : "Forbidden"
           },
           "404" : {
             "content" : {

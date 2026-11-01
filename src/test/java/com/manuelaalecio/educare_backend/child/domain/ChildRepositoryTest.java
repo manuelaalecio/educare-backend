@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.sql.Date;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.UUID;
@@ -54,7 +55,8 @@ class ChildRepositoryTest {
 		save(aChild().name("Maria João"));
 
 		// when
-		Page<Child> page = childRepository.searchByName("%joao%", PageRequest.of(0, 20, Sort.by("name")));
+		Page<Child> page = childRepository.findAll(ChildSpecifications.nameMatches("%joao%"),
+				PageRequest.of(0, 20, Sort.by("name")));
 
 		// then
 		assertThat(page.getContent()).extracting(Child::getName).containsExactly("João Pedro", "Maria João");
@@ -68,8 +70,8 @@ class ChildRepositoryTest {
 		save(aChild().name("Bruno"));
 
 		// when
-		Page<Child> percent = childRepository.searchByName("%\\%%", PageRequest.of(0, 20));
-		Page<Child> underscore = childRepository.searchByName("%\\_%", PageRequest.of(0, 20));
+		Page<Child> percent = childRepository.findAll(ChildSpecifications.nameMatches("%\\%%"), PageRequest.of(0, 20));
+		Page<Child> underscore = childRepository.findAll(ChildSpecifications.nameMatches("%\\_%"), PageRequest.of(0, 20));
 
 		// then
 		assertThat(percent.getContent()).isEmpty();
@@ -84,13 +86,51 @@ class ChildRepositoryTest {
 		save(aChild().name("Carla Clara"));
 
 		// when
-		Page<Child> page = childRepository.searchByName("%clara%",
+		Page<Child> page = childRepository.findAll(ChildSpecifications.nameMatches("%clara%"),
 				PageRequest.of(0, 2, Sort.by(Sort.Direction.DESC, "name")));
 
 		// then
 		assertThat(page.getContent()).extracting(Child::getName).containsExactly("Carla Clara", "Bruna Clara");
 		assertThat(page.getTotalElements()).isEqualTo(3);
 		assertThat(page.getTotalPages()).isEqualTo(2);
+	}
+
+	@Test
+	void shouldFindOnlyChildrenCurrentlyInClassroomWhenFilteringByClassroom() {
+		// given
+		UUID turma1 = insertClassroom("Turma 1");
+		UUID turma2 = insertClassroom("Turma 2");
+		link(save(aChild().name("João Pedro")), turma1, null);
+		link(save(aChild().name("Ana Lima")), turma1, null);
+		link(save(aChild().name("Maria João")), turma2, null);
+		Child joaoPaulo = save(aChild().name("João Paulo"));
+		link(joaoPaulo, turma1, LocalDate.of(2026, 11, 1));
+		link(joaoPaulo, turma2, null);
+
+		// when
+		Page<Child> inTurma1 = childRepository.findAll(ChildSpecifications.inClassroom(turma1),
+				PageRequest.of(0, 20, Sort.by("name")));
+		Page<Child> joaoInTurma1 = childRepository.findAll(
+				ChildSpecifications.inClassroom(turma1).and(ChildSpecifications.nameMatches("%joao%")),
+				PageRequest.of(0, 20, Sort.by("name")));
+
+		// then
+		assertThat(inTurma1.getContent()).extracting(Child::getName).containsExactly("Ana Lima", "João Pedro");
+		assertThat(joaoInTurma1.getContent()).extracting(Child::getName).containsExactly("João Pedro");
+		assertThat(joaoInTurma1.getTotalElements()).isEqualTo(1);
+	}
+
+	@Test
+	void shouldFindNothingWhenClassroomHasNoChildren() {
+		// given
+		UUID empty = insertClassroom("Turma 3");
+		link(save(aChild()), insertClassroom("Turma 1"), null);
+
+		// when
+		Page<Child> page = childRepository.findAll(ChildSpecifications.inClassroom(empty), PageRequest.of(0, 20));
+
+		// then
+		assertThat(page.getContent()).isEmpty();
 	}
 
 	@Test
@@ -252,6 +292,24 @@ class ChildRepositoryTest {
 		args.add(ANA_ID);
 		args.add(ANA_ID);
 		jdbcTemplate.update("INSERT INTO children (" + columns + ") VALUES (" + placeholders + ")", args.toArray());
+	}
+
+	private UUID insertClassroom(String name) {
+		UUID id = UUID.randomUUID();
+		jdbcTemplate.update("""
+				INSERT INTO classrooms (id, name, created_at, updated_at, created_by, updated_by)
+				VALUES (?, ?, now(), now(), ?, ?)
+				""", id, name, ANA_ID, ANA_ID);
+		return id;
+	}
+
+	private void link(Child child, UUID classroomId, LocalDate endDate) {
+		jdbcTemplate.update("""
+				INSERT INTO child_classrooms (id, child_id, classroom_id, start_date, end_date, created_at, updated_at,
+				                              created_by, updated_by)
+				VALUES (?, ?, ?, ?, ?, now(), now(), ?, ?)
+				""", UUID.randomUUID(), child.getId(), classroomId, Date.valueOf("2026-10-01"),
+				endDate == null ? null : Date.valueOf(endDate), ANA_ID, ANA_ID);
 	}
 
 	private UUID authorInDatabase(String column, UUID id) {
