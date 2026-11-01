@@ -21,7 +21,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 public final class AuthenticatedAs {
 
 	/** The role does not matter for authorship; only the id is recorded. */
-	private static final String ROLE = "USER";
+	private static final String ROLE = "EDUCADOR";
 
 	private AuthenticatedAs() {
 	}

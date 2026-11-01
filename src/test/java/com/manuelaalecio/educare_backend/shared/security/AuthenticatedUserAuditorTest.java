@@ -27,7 +27,7 @@ class AuthenticatedUserAuditorTest {
 	void shouldReturnUserIdWhenPrincipalIsAuthenticatedUser() {
 		// given
 		SecurityContextHolder.getContext()
-			.setAuthentication(new AuthenticatedUserAuthentication(new AuthenticatedUser(USER_ID, "USER")));
+			.setAuthentication(new AuthenticatedUserAuthentication(new AuthenticatedUser(USER_ID, "EDUCADOR")));
 
 		// when
 		Optional<UUID> auditor = this.auditor.getCurrentAuditor();
@@ -65,7 +65,7 @@ class AuthenticatedUserAuditorTest {
 	void shouldReturnEmptyWhenPrincipalIsOfAnotherType() {
 		// given
 		SecurityContextHolder.getContext().setAuthentication(UsernamePasswordAuthenticationToken.authenticated(
-				USER_ID.toString(), null, AuthorityUtils.createAuthorityList("ROLE_ADMIN")));
+				USER_ID.toString(), null, AuthorityUtils.createAuthorityList("ROLE_COORDENADOR")));
 
 		// when
 		Optional<UUID> auditor = this.auditor.getCurrentAuditor();

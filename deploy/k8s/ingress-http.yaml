@@ -1,0 +1,28 @@
+# HTTP (entrypoint web) do host da API: toda requisição recebe 308 para a mesma URL em HTTPS.
+#
+# É um Ingress separado porque o router que o Traefik cria para um Ingress com tls só atende HTTPS:
+# um Middleware posto no educare-backend nunca veria as requisições HTTP.
+#
+# O desafio HTTP-01 do cert-manager não é redirecionado: o Ingress temporário do solver
+# (/.well-known/acme-challenge/<token>, sem este Middleware) tem regra mais longa e, por isso,
+# prioridade maior no Traefik. O backend abaixo é exigido pelo Ingress, mas a requisição não chega nele.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: educare-backend-http
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+    traefik.ingress.kubernetes.io/router.middlewares: educare-redirect-https@kubernetescrd
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: 136-248-80-75.sslip.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: educare-backend
+                port:
+                  number: 8080

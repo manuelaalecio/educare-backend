@@ -30,7 +30,7 @@ import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
  * 	&#64;Autowired
  * 	AccessTokens accessTokens;
  *
- * 	// given(lookup.findById(ID)).willReturn(Optional.of(new TokenOwner(new AuthenticatedUser(ID, "ADMIN"), null)));
+ * 	// given(lookup.findById(ID)).willReturn(Optional.of(new TokenOwner(new AuthenticatedUser(ID, "COORDENADOR"), null)));
  * 	// mockMvc.perform(get("/api/v1/...").header(HttpHeaders.AUTHORIZATION, accessTokens.bearer(ID)))
  * }
  * </pre>

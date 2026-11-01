@@ -207,9 +207,9 @@ class AuthControllerTest {
 	@Test
 	void shouldReturnOwnDataWithoutPasswordWhenTokenIsValid() throws Exception {
 		// given
-		givenUser("USER");
+		givenUser("EDUCADOR");
 		given(authService.me(USER_ID)).willReturn(new UserAccount(USER_ID, "Ana Souza", "ana.souza@educare.org",
-				"USER", CREATED_AT, UPDATED_AT));
+				"EDUCADOR", CREATED_AT, UPDATED_AT));
 
 		// when
 		ResultActions result = mockMvc.perform(get(ME_PATH)
@@ -221,7 +221,7 @@ class AuthControllerTest {
 				.andExpect(jsonPath("$.id").value(USER_ID.toString()))
 				.andExpect(jsonPath("$.name").value("Ana Souza"))
 				.andExpect(jsonPath("$.login").value("ana.souza@educare.org"))
-				.andExpect(jsonPath("$.role").value("USER"))
+				.andExpect(jsonPath("$.role").value("EDUCADOR"))
 				.andExpect(jsonPath("$.createdAt").value("2026-03-01T10:00:00Z"))
 				.andExpect(jsonPath("$.updatedAt").value("2026-03-02T09:00:00Z"))
 				.andExpect(jsonPath("$.password").doesNotExist());
@@ -243,7 +243,7 @@ class AuthControllerTest {
 	@Test
 	void shouldReturnNewBearerTokenWhenOwnPasswordIsChanged() throws Exception {
 		// given
-		givenUser("USER");
+		givenUser("EDUCADOR");
 		given(authService.changeOwnPassword(USER_ID, "segredo123", "novaSenha456"))
 				.willReturn(new IssuedAccessToken(TOKEN, 28800));
 
@@ -261,7 +261,7 @@ class AuthControllerTest {
 	@Test
 	void shouldRejectPasswordChangeWhenNewPasswordIsInvalid() throws Exception {
 		// given
-		givenUser("USER");
+		givenUser("EDUCADOR");
 
 		// when
 		ResultActions result = changePassword("""
@@ -278,7 +278,7 @@ class AuthControllerTest {
 	@Test
 	void shouldRejectPasswordChangeWhenNewPasswordHasMoreThan72Bytes() throws Exception {
 		// given
-		givenUser("USER");
+		givenUser("EDUCADOR");
 
 		// when
 		ResultActions result = changePassword("""
@@ -294,7 +294,7 @@ class AuthControllerTest {
 	@Test
 	void shouldRejectPasswordChangeWithFieldErrorsWhenFieldsAreMissing() throws Exception {
 		// given
-		givenUser("USER");
+		givenUser("EDUCADOR");
 
 		// when
 		ResultActions result = changePassword("{}");
@@ -309,7 +309,7 @@ class AuthControllerTest {
 	@Test
 	void shouldRejectPasswordChangeWhenCurrentPasswordIsIncorrect() throws Exception {
 		// given
-		givenUser("USER");
+		givenUser("EDUCADOR");
 		willThrow(new InvalidCurrentPasswordException()).given(authService)
 				.changeOwnPassword(USER_ID, "errada123", "novaSenha456");
 
@@ -328,7 +328,7 @@ class AuthControllerTest {
 	@Test
 	void shouldRejectPasswordChangeWhenNewPasswordIsCurrentPassword() throws Exception {
 		// given
-		givenUser("USER");
+		givenUser("EDUCADOR");
 		willThrow(new NewPasswordSameAsCurrentException()).given(authService)
 				.changeOwnPassword(USER_ID, "segredo123", "segredo123");
 
@@ -347,7 +347,7 @@ class AuthControllerTest {
 	@Test
 	void shouldRejectPasswordChangeWithoutRepeatingLoginWhenNewPasswordIsLogin() throws Exception {
 		// given
-		givenUser("USER");
+		givenUser("EDUCADOR");
 		willThrow(new NewPasswordSameAsLoginException()).given(authService)
 				.changeOwnPassword(USER_ID, "segredo123", "Ana.Souza@EDUCARE.org");
 
@@ -367,7 +367,7 @@ class AuthControllerTest {
 	@Test
 	void shouldRespondTooManyRequestsWithoutErrorsWhenAttemptsAreExhausted() throws Exception {
 		// given
-		givenUser("USER");
+		givenUser("EDUCADOR");
 		willThrow(new TooManyPasswordAttemptsException()).given(authService)
 				.changeOwnPassword(USER_ID, "segredo123", "novaSenha456");
 
@@ -386,7 +386,7 @@ class AuthControllerTest {
 	@Test
 	void shouldRejectPasswordChangeWhenBodyIsNotValidJson() throws Exception {
 		// given
-		givenUser("USER");
+		givenUser("EDUCADOR");
 
 		// when
 		ResultActions result = changePassword("{\"currentPassword\": ");

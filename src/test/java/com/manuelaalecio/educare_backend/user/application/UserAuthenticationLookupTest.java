@@ -33,7 +33,7 @@ class UserAuthenticationLookupTest {
 	@Test
 	void shouldReturnIdAndCurrentRoleWhenUserExists() {
 		// given
-		var user = new User("Ana Souza", "ana.souza@educare.org", "$2a$10$hash", Role.ADMIN);
+		var user = new User("Ana Souza", "ana.souza@educare.org", "$2a$10$hash", Role.COORDENADOR);
 		ReflectionTestUtils.setField(user, "id", ID);
 		when(userRepository.findById(ID)).thenReturn(Optional.of(user));
 
@@ -41,13 +41,13 @@ class UserAuthenticationLookupTest {
 		var result = userAuthenticationLookup.findById(ID);
 
 		// then
-		assertThat(result).contains(new TokenOwner(new AuthenticatedUser(ID, "ADMIN"), null));
+		assertThat(result).contains(new TokenOwner(new AuthenticatedUser(ID, "COORDENADOR"), null));
 	}
 
 	@Test
 	void shouldReturnLastPasswordChangeWhenUserChangedPassword() {
 		// given
-		var user = new User("Ana Souza", "ana.souza@educare.org", "$2a$10$hash", Role.USER);
+		var user = new User("Ana Souza", "ana.souza@educare.org", "$2a$10$hash", Role.EDUCADOR);
 		ReflectionTestUtils.setField(user, "id", ID);
 		user.changePassword("$2a$10$other", Instant.parse("2026-03-01T10:30:00Z"));
 		when(userRepository.findById(ID)).thenReturn(Optional.of(user));
@@ -57,7 +57,7 @@ class UserAuthenticationLookupTest {
 
 		// then
 		assertThat(result).contains(
-				new TokenOwner(new AuthenticatedUser(ID, "USER"), Instant.parse("2026-03-01T10:30:00Z")));
+				new TokenOwner(new AuthenticatedUser(ID, "EDUCADOR"), Instant.parse("2026-03-01T10:30:00Z")));
 	}
 
 	@Test

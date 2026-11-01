@@ -108,6 +108,18 @@ class ApiContractContentTest {
 		assertThat(required(schema)).contains("id", "name", "login", "role", "createdAt", "updatedAt");
 	}
 
+	@ParameterizedTest
+	@CsvSource({"/api/v1/users, post", "/api/v1/users/{id}, put"})
+	void shouldDeclareCoordinatorAndEducatorAsOnlyRolesWhenReadingUserRequests(String path, String method) {
+		// when
+		String ref = contract.read(operationPath(path, method) + ".requestBody.content['application/json'].schema.$ref");
+		String pattern = contract.read("$.components.schemas['" + ref.substring(SCHEMA_REF_PREFIX.length())
+				+ "'].properties.role.pattern");
+
+		// then
+		assertThat(pattern).isEqualTo("COORDENADOR|EDUCADOR");
+	}
+
 	@Test
 	@DisplayName("Scenario: Nenhuma resposta com media type genérico")
 	void shouldNotDeclareWildcardMediaTypeWhenReadingAnyResponse() {
@@ -168,7 +180,7 @@ class ApiContractContentTest {
 
 	@Test
 	@DisplayName("Scenario: Erros de uma operação de ADMIN")
-	void shouldDeclareAdminOperationProblemsWhenReadingUserCreation() {
+	void shouldDeclareCoordinatorOperationProblemsWhenReadingUserCreation() {
 		// when / then
 		assertProblemResponses("/api/v1/users", "post", "400", "401", "403", "409");
 	}
@@ -176,7 +188,7 @@ class ApiContractContentTest {
 	@ParameterizedTest
 	@CsvSource({"/api/v1/users, get", "/api/v1/users/{id}, get", "/api/v1/users/{id}, put",
 			"/api/v1/users/{id}/password, put", "/api/v1/users/{id}, delete"})
-	void shouldDeclareUnauthorizedAndForbiddenWhenOperationRequiresAdmin(String path, String method) {
+	void shouldDeclareUnauthorizedAndForbiddenWhenOperationRequiresCoordinator(String path, String method) {
 		// when / then
 		assertProblemResponses(path, method, "401", "403");
 	}
@@ -199,7 +211,7 @@ class ApiContractContentTest {
 
 	@Test
 	@DisplayName("Scenario: Operação sem limite de tentativas não declara 429")
-	void shouldNotDeclareTooManyRequestsWhenReadingPasswordResetByAdmin() {
+	void shouldNotDeclareTooManyRequestsWhenReadingPasswordResetByCoordinator() {
 		// when
 		Map<String, Object> responses = responses("/api/v1/users/{id}/password", "put");
 

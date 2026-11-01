@@ -14,7 +14,9 @@ resources:
   - postgres/statefulset.yaml
   - api/service.yaml
   - api/deployment.yaml
+  - middleware-redirect-https.yaml
   - ingress.yaml
+  - ingress-http.yaml
 
 # Tag de bootstrap: a primeira versão arm64, usada só quando a Application é criada (ou recriada).
 # Depois disso, a tag em produção é a que o Argo CD Image Updater grava na Application

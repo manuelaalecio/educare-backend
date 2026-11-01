@@ -52,7 +52,7 @@ public class User extends BaseEntity {
 	private Instant passwordChangedAt;
 
 	public User(String name, String login, String passwordHash) {
-		this(name, login, passwordHash, Role.USER);
+		this(name, login, passwordHash, Role.EDUCADOR);
 	}
 
 	public User(String name, String login, String passwordHash, Role role) {

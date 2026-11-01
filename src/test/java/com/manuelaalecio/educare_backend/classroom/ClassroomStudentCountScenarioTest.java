@@ -63,7 +63,7 @@ class ClassroomStudentCountScenarioTest {
 	void setUp() throws Exception {
 		jdbcTemplate.update("DELETE FROM classrooms");
 		jdbcTemplate.update("DELETE FROM users WHERE login = ?", ADMIN_LOGIN);
-		testUsers.create("Zélia", ADMIN_LOGIN, PASSWORD, "ADMIN");
+		testUsers.create("Zélia", ADMIN_LOGIN, PASSWORD, "COORDENADOR");
 		adminBearer = testUsers.bearer(ADMIN_LOGIN, PASSWORD);
 		given(studentCounter.countFor(any(UUID.class))).willReturn(StudentCounts.ZERO);
 	}

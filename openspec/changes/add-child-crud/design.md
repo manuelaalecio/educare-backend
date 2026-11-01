@@ -34,11 +34,11 @@ Estado atual que molda a abordagem (considerando `add-record-authorship` já apl
 | `GET` | `/api/v1/children` | `name?`, `page`, `size`, `sort` | `200` + `PagedModel<ChildSummaryResponse>` | `400` sort inválido | autenticado |
 | `GET` | `/api/v1/children/{id}` | — | `200` + `ChildResponse` | `400` id malformado, `404` | autenticado |
 | `PUT` | `/api/v1/children/{id}` | `ChildRequest` | `200` + `ChildResponse` | `400`, `404`, `409` | autenticado |
-| `DELETE` | `/api/v1/children/{id}` | — | `204` | `400` id malformado, `403`, `404` | `ADMIN` |
+| `DELETE` | `/api/v1/children/{id}` | — | `204` | `400` id malformado, `403`, `404` | `COORDENADOR` |
 
 Todos respondem `401` sem token válido (filter chain já existente).
 
-- **Acesso**: o controller não tem `@PreAuthorize` na classe (o token já é exigido pela filter chain); só o método `delete` tem `@PreAuthorize("hasRole('ADMIN')")`.
+- **Acesso**: o controller não tem `@PreAuthorize` na classe (o token já é exigido pela filter chain); só o método `delete` tem `@PreAuthorize("hasRole('COORDENADOR')")`.
 - **Um único `ChildRequest` para criar e alterar**, em vez do par `CreateChildRequest`/`UpdateChildRequest` da convenção do CLAUDE.md. O `PUT` substitui a criança inteira e aceita exatamente os mesmos campos e regras da criação; dois records idênticos com 21 campos anotados cada tenderiam a divergir numa manutenção.
   - *Alternativa*: seguir a convenção ao pé da letra. Descartada pelo risco de divergência; se um dia os corpos diferirem, o record é separado.
 - **`ChildSummaryResponse` na listagem** (`id`, `name`, `birthDate`, `createdAt`, `updatedAt`) e `ChildResponse` completo nos demais: a listagem é a tela mais acessada e não precisa de CPF, endereço nem dados de saúde (minimização, LGPD). Nenhuma das duas tem `createdBy`/`updatedBy`.
@@ -161,7 +161,7 @@ Tabela e colunas em `snake_case` (convenção do projeto); os valores das listas
 ### D7. Testes
 
 - Unitários: `CpfTest`, `CepTest` e `RgTest` (normalização e validação, incluindo os exemplos da spec), `ChildTest` (normalização e invariantes), `ChildServiceTest` (Mockito, com `Clock` fixo, incluindo a fronteira de fuso e o padrão escapado), `ChildMapperTest`, `ValidCpfValidatorTest`, `GlobalExceptionHandlerTest` (D6).
-- `ChildControllerTest` (`@WebMvcTest` com a segurança importada, `AuthenticatedUserLookup` mockado e tokens de `AccessTokens`): status, `errors` (inclusive data malformada), `Location`, sort inválido, `403` de `USER` no `DELETE`, `401` sem token.
+- `ChildControllerTest` (`@WebMvcTest` com a segurança importada, `AuthenticatedUserLookup` mockado e tokens de `AccessTokens`): status, `errors` (inclusive data malformada), `Location`, sort inválido, `403` de `EDUCADOR` no `DELETE`, `401` sem token.
 - `ChildRepositoryTest` (`@DataJpaTest` + Testcontainers, importando `JpaAuditingConfiguration`): grava dentro de `AuthenticatedAs`, porque `created_by`/`updated_by` são `NOT NULL`; busca com acento/caixa/curingas, `children_cpf_key` e `children_rg_key` com vários `NULL`, os `CHECK`s via `JdbcTemplate`, e gravação sem usuário recusada pelo `NOT NULL`.
 - `ChildScenarioTest` (`@SpringBootTest`): um teste por Scenario da spec, com usuários de `TestUsers` e o `MutableClock`; limpa a tabela `children` no `@BeforeEach`; a autoria é lida via `JdbcTemplate`.
 
@@ -171,7 +171,7 @@ Tabela e colunas em `snake_case` (convenção do projeto); os valores das listas
 - [RG repetido entre estados] O mesmo número de RG pode ser emitido por estados diferentes, e sem o órgão emissor duas crianças reais podem colidir, com a segunda recebendo `409` → Caso raro no público atendido (em geral de um só estado); uma change futura adiciona a UF emissora e muda a unicidade para `(rg, rg_state)`.
 - [`errors` em erros de desserialização em toda a API] Respostas `400` de campos com tipo ou formato inválido mudam de forma em todos os endpoints → Mudança só aditiva (a propriedade `errors` aparece onde antes não havia); status e `Content-Type` continuam iguais.
 - [Dependência de outra change] Sem `add-record-authorship` aplicada, a `V5` e a entidade não batem com a `BaseEntity` → Task 1.1 confere o pré-requisito antes de começar.
-- [Exclusão definitiva] Dados excluídos não voltam → Restrita a `ADMIN`; quando responsáveis e matrículas existirem, as FKs dessas changes decidem o comportamento da exclusão.
+- [Exclusão definitiva] Dados excluídos não voltam → Restrita a `COORDENADOR`; quando responsáveis e matrículas existirem, as FKs dessas changes decidem o comportamento da exclusão.
 
 ## Migration Plan
 

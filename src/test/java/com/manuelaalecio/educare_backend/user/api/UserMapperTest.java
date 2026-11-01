@@ -21,7 +21,7 @@ class UserMapperTest {
 		UUID id = UUID.fromString("0190f4a2-0000-7000-8000-000000000001");
 		Instant createdAt = Instant.parse("2026-03-01T10:00:00Z");
 		Instant updatedAt = Instant.parse("2026-03-02T09:00:00Z");
-		User user = new User("Ana Souza", "ana.souza@educare.org", "hash", Role.ADMIN);
+		User user = new User("Ana Souza", "ana.souza@educare.org", "hash", Role.COORDENADOR);
 		ReflectionTestUtils.setField(user, "id", id);
 		ReflectionTestUtils.setField(user, "createdAt", createdAt);
 		ReflectionTestUtils.setField(user, "updatedAt", updatedAt);
@@ -31,11 +31,11 @@ class UserMapperTest {
 
 		// then
 		assertThat(response).isEqualTo(
-				new UserResponse(id, "Ana Souza", "ana.souza@educare.org", "ADMIN", createdAt, updatedAt));
+				new UserResponse(id, "Ana Souza", "ana.souza@educare.org", "COORDENADOR", createdAt, updatedAt));
 	}
 
 	@Test
-	void shouldMapUserRoleNameWhenUserIsNotAdmin() {
+	void shouldMapUserRoleNameWhenUserIsNotCoordinator() {
 		// given
 		User user = new User("Bruno Lima", "bruno.lima@educare.org", "hash");
 
@@ -43,7 +43,7 @@ class UserMapperTest {
 		UserResponse response = mapper.toResponse(user);
 
 		// then
-		assertThat(response.role()).isEqualTo("USER");
+		assertThat(response.role()).isEqualTo("EDUCADOR");
 	}
 
 	@Test
@@ -56,21 +56,21 @@ class UserMapperTest {
 	}
 
 	@Test
-	void shouldReturnAdminWhenRoleIsAdmin() {
+	void shouldReturnCoordinatorWhenRoleIsCoordinator() {
 		// when
-		Role role = mapper.toRole("ADMIN");
+		Role role = mapper.toRole("COORDENADOR");
 
 		// then
-		assertThat(role).isEqualTo(Role.ADMIN);
+		assertThat(role).isEqualTo(Role.COORDENADOR);
 	}
 
 	@Test
-	void shouldReturnUserWhenRoleIsUser() {
+	void shouldReturnEducatorWhenRoleIsEducator() {
 		// when
-		Role role = mapper.toRole("USER");
+		Role role = mapper.toRole("EDUCADOR");
 
 		// then
-		assertThat(role).isEqualTo(Role.USER);
+		assertThat(role).isEqualTo(Role.EDUCADOR);
 	}
 
 }

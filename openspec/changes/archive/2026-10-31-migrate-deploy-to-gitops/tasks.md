@@ -123,27 +123,27 @@
 
 ## 6. Validação no GitHub e no cluster (manual, pela Manuela)
 
-- [ ] 6.1 Abrir o PR `dev` → `main`. Verificar que `build` e `manifests` rodam verdes e que `publish-gate`/`image` não publicam nada no PR. Mergear sem o label `build` e verificar que nenhuma imagem nova aparece.
-- [ ] 6.2 (CA01) Criar a tag `v0.2.0` no head da `main` e fazer push. Verificar:
+- [x] 6.1 Abrir o PR `dev` → `main`. Verificar que `build` e `manifests` rodam verdes e que `publish-gate`/`image` não publicam nada no PR. Mergear sem o label `build` e verificar que nenhuma imagem nova aparece.
+- [x] 6.2 (CA01) Criar a tag `v0.2.0` no head da `main` e fazer push. Verificar:
   - a CI publica `v0.2.0`, `<sha7>` e `latest`;
   - `docker buildx imagetools inspect ghcr.io/manuelaalecio/educare-backend:v0.2.0` (e das outras duas) lista só `linux/arm64`;
   - uma tag `v0.0.0` descartável num commit fora da `main` não publica, com o motivo no resumo. Apagar a tag em seguida.
-- [ ] 6.3 (CA05) Pelo túnel, sem criar o Secret, aplicar a Application num teste rápido. Verificar que os pods ficam em `CreateContainerConfigError` e que nada sobe com valor padrão. Depois criar o namespace e o Secret `educare-env` conforme o README.
-- [ ] 6.4 Instalar o Image Updater e aplicar `deploy/argocd/application.yaml` e `image-updater.yaml` conforme o README. Verificar:
+- [x] 6.3 (CA05) Pelo túnel, sem criar o Secret, aplicar a Application num teste rápido. Verificar que os pods ficam em `CreateContainerConfigError` e que nada sobe com valor padrão. Depois criar o namespace e o Secret `educare-env` conforme o README.
+- [x] 6.4 Instalar o Image Updater e aplicar `deploy/argocd/application.yaml` e `image-updater.yaml` conforme o README. Verificar:
   - a Application fica `Synced`/`Healthy`;
   - `curl http://<IP>/actuator/health/readiness` responde `{"status":"UP"}`;
   - o login do admin com o `EDUCARE_ADMIN_PASSWORD` funciona;
   - `kubectl -n educare get svc,ingress` não tem NodePort nem LoadBalancer, e o Postgres não aparece no Ingress (CA03);
   - excluir o pod do Postgres mantém os dados (RNF04).
-- [ ] 6.5 (CA07) Publicar `v0.2.1`. Verificar que, em até alguns minutos, a Application passa a usar `:v0.2.1` (`kubectl -n argocd get application educare -o jsonpath='{.spec.source.kustomize.images}'`) sem nenhum commit novo em nenhuma branch.
-- [ ] 6.6 Rollback: fixar `v0.2.0` no CR conforme o README e verificar que o Deployment volta a `:v0.2.0`. Ensaiar também o rollback pelo histórico do Argo CD (auto-sync desligado e religado). Restaurar o CR.
-- [ ] 6.7 Checklist de limpeza (subtarefa 4):
+- [x] 6.5 (CA07) Publicar `v0.2.1`. Verificar que, em até alguns minutos, a Application passa a usar `:v0.2.1` (`kubectl -n argocd get application educare -o jsonpath='{.spec.source.kustomize.images}'`) sem nenhum commit novo em nenhuma branch.
+- [x] 6.6 Rollback: fixar `v0.2.0` no CR conforme o README e verificar que o Deployment volta a `:v0.2.0`. Ensaiar também o rollback pelo histórico do Argo CD (auto-sync desligado e religado). Restaurar o CR.
+- [x] 6.7 Checklist de limpeza (subtarefa 4):
   - excluir o environment `production` e os secrets `SSH_HOST`, `SSH_USER`, `SSH_PRIVATE_KEY` e `SSH_KNOWN_HOSTS`;
-  - revisar a security list da VCN (só 22 e 80);
-  - opcional: exigir o check `manifests` na proteção da `main`.
+  - revisar a security list da VCN: removida a regra da 5432 (Postgres da VM antiga do backend). Ficam 22, 80, 443 e o ICMP padrão; a 443 foi mantida de propósito para o HTTPS da próxima change (o Traefik já escuta nela);
+  - opcional, decidido não fazer: exigir o check `manifests` na proteção da `main`.
 
-  Verificar com `gh api repos/manuelaalecio/educare-backend/environments` sem `production`.
+  Verificado com `gh api repos/manuelaalecio/educare-backend/environments` sem nenhum environment, e de fora: 22, 80 e 443 abertas; 5432 e 6443 fechadas.
 
 ## 7. Verificação final
 
-- [ ] 7.1 Rodar `./gradlew build` localmente, com o Docker ativo. Verificar que termina verde, incluindo o contrato da API inalterado e o `jacocoTestCoverageVerification` (mínimo de 90% de linhas e de branches), e que os checks `build` e `manifests` do PR da 6.1 estavam verdes no último commit antes do merge.
+- [x] 7.1 Rodar `./gradlew build` localmente, com o Docker ativo. Verificar que termina verde, incluindo o contrato da API inalterado e o `jacocoTestCoverageVerification` (mínimo de 90% de linhas e de branches), e que os checks `build` e `manifests` do PR da 6.1 estavam verdes no último commit antes do merge.

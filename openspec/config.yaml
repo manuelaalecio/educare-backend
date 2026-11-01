@@ -23,6 +23,8 @@ context: |
   - Criança -> Child
   - Responsável -> Guardian
   - Usuário / funcionário -> User
+  - Coordenador(a) -> role COORDENADOR (acessa as configurações: usuários e turmas)
+  - Educador(a) -> role EDUCADOR
   - Turma -> Classroom
   - Matrícula -> Enrollment
   - Rematrícula -> Reenrollment
@@ -48,7 +50,9 @@ context: |
     público) pelo CI (push na main com o label build, ou tag vX.Y.Z num commit da main).
     O deploy é GitOps num k3s de nó único (VM Oracle Ampere): o Argo CD sincroniza os
     manifests Kustomize de deploy/k8s (API, Postgres em StatefulSet no próprio cluster,
-    Ingress Traefik) e o Argo CD Image Updater leva a maior tag vX.Y.Z à Application, sem
+    Ingress Traefik com TLS da Let's Encrypt em https://136-248-80-75.sslip.io e redirect do
+    HTTP; cert-manager e ClusterIssuers de deploy/cert-manager instalados à mão) e o Argo CD
+    Image Updater leva a maior tag vX.Y.Z à Application, sem
     commit no git. Segredos só no Secret educare-env, criado à mão. Rollback fixando a tag
     no ImageUpdater ou pelo histórico do Argo CD. Sem SSH no pipeline.
 
@@ -126,7 +130,7 @@ context: |
   - Cobertura JaCoCo mínima de 90% de linhas e branches, verificada no build.
   - O ./gradlew build roda no CI (.github/workflows/ci.yml) em todo PR para a main e em
     todo push na main e em tags v*; o check build é obrigatório para o merge. O job manifests
-    valida deploy/k8s e deploy/argocd. A imagem linux/arm64 é publicada no GHCR (:<sha7> e
+    valida deploy/k8s, deploy/argocd e deploy/cert-manager. A imagem linux/arm64 é publicada no GHCR (:<sha7> e
     :latest) no push na main só se o PR mergeado tiver o label build, e numa tag vX.Y.Z de
     um commit da main também com :vX.Y.Z, sem exigir o label.
 

@@ -153,13 +153,26 @@ jobs:
           tar -xzf kubeconform-linux-amd64.tar.gz kubeconform
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
 
+      # The CRDs-catalog covers the Traefik Middleware used by the HTTP->HTTPS redirect.
       - name: Validate deploy/k8s
         env:
           KUBERNETES_VERSION: 1.36.0
+          CRD_SCHEMAS: https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json
         run: |
           set -euo pipefail
           kubectl kustomize deploy/k8s \
-            | kubeconform -strict -summary -kubernetes-version "$KUBERNETES_VERSION" -schema-location default
+            | kubeconform -strict -summary -kubernetes-version "$KUBERNETES_VERSION" \
+              -schema-location default -schema-location "$CRD_SCHEMAS"
+
+      # ClusterIssuers, applied by hand next to cert-manager (outside the Argo CD Application).
+      - name: Validate deploy/cert-manager
+        env:
+          KUBERNETES_VERSION: 1.36.0
+          CRD_SCHEMAS: https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json
+        run: |
+          set -euo pipefail
+          kubeconform -strict -summary -kubernetes-version "$KUBERNETES_VERSION" \
+            -schema-location default -schema-location "$CRD_SCHEMAS" deploy/cert-manager/
 
       # The CRDs-catalog schema of ImageUpdater is from before v1.2 (it still requires
       # spec.namespace, removed in v1.2), so that kind is skipped here; image-updater.yaml

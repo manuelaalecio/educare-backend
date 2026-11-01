@@ -77,9 +77,9 @@ class ClassroomScenarioTest {
 		jdbcTemplate.update("DELETE FROM classrooms");
 		jdbcTemplate.update("DELETE FROM users");
 		clock.setInstant(CREATED_AT);
-		adminId = testUsers.create("Administrador", ADMIN_LOGIN, PASSWORD, "ADMIN");
-		brunoId = testUsers.create("Bruno", BRUNO_LOGIN, PASSWORD, "ADMIN");
-		testUsers.create("Ana Souza", ANA_LOGIN, PASSWORD, "USER");
+		adminId = testUsers.create("Administrador", ADMIN_LOGIN, PASSWORD, "COORDENADOR");
+		brunoId = testUsers.create("Bruno", BRUNO_LOGIN, PASSWORD, "COORDENADOR");
+		testUsers.create("Ana Souza", ANA_LOGIN, PASSWORD, "EDUCADOR");
 		adminBearer = testUsers.bearer(ADMIN_LOGIN, PASSWORD);
 		anaBearer = testUsers.bearer(ANA_LOGIN, PASSWORD);
 	}
@@ -489,11 +489,11 @@ class ClassroomScenarioTest {
 		result.andExpect(status().isCreated());
 	}
 
-	// ---------- Gestão de turmas restrita a ADMIN ----------
+	// ---------- Gestão de turmas restrita a COORDENADOR ----------
 
 	@Test
 	@DisplayName("Scenario: ADMIN lista turmas")
-	void shouldListClassroomsWhenUserIsAdmin() throws Exception {
+	void shouldListClassroomsWhenUserIsCoordinator() throws Exception {
 		// when
 		ResultActions result = listClassrooms(adminBearer);
 
@@ -503,7 +503,7 @@ class ClassroomScenarioTest {
 
 	@Test
 	@DisplayName("Scenario: USER não lista turmas")
-	void shouldForbidListingWhenUserIsNotAdmin() throws Exception {
+	void shouldForbidListingWhenUserIsNotCoordinator() throws Exception {
 		// when
 		ResultActions result = listClassrooms(anaBearer);
 
@@ -513,7 +513,7 @@ class ClassroomScenarioTest {
 
 	@Test
 	@DisplayName("Scenario: USER não cria turma")
-	void shouldForbidCreationWhenUserIsNotAdmin() throws Exception {
+	void shouldForbidCreationWhenUserIsNotCoordinator() throws Exception {
 		// when
 		ResultActions result = mockMvc.perform(withJson(post(CLASSROOMS), """
 				{"name": "Turma 9"}""").header(HttpHeaders.AUTHORIZATION, anaBearer));
@@ -525,7 +525,7 @@ class ClassroomScenarioTest {
 
 	@Test
 	@DisplayName("Scenario: USER não renomeia nem exclui turma")
-	void shouldForbidReadingRenamingAndDeletionWhenUserIsNotAdmin() throws Exception {
+	void shouldForbidReadingRenamingAndDeletionWhenUserIsNotCoordinator() throws Exception {
 		// given
 		UUID id = createClassroom("Turma 1");
 

@@ -74,7 +74,7 @@ class AdminSeedScenarioTest {
 			// then
 			assertThat(context.isRunning()).isTrue();
 			assertThat(query("SELECT name || ':' || role FROM users WHERE login = '" + ADMIN_LOGIN + "'"))
-				.containsExactly("Administrador:ADMIN");
+				.containsExactly("Administrador:COORDENADOR");
 			assertThat(adminPasswordMatches("senhaAdmin123")).isTrue();
 		}
 	}

@@ -64,7 +64,7 @@ class AuthorshipScenarioTest {
 	private static final String ANA_LOGIN = "ana.souza@educare.org";
 	private static final String PASSWORD = "segredo123";
 	private static final String NEW_ANA_BODY = """
-			{"name": "Ana Souza", "login": "ana.souza@educare.org", "password": "segredo123", "role": "USER"}""";
+			{"name": "Ana Souza", "login": "ana.souza@educare.org", "password": "segredo123", "role": "EDUCADOR"}""";
 
 	/** Property names that would carry the authorship in a response. */
 	private static final Pattern AUTHORSHIP_PROPERTY = Pattern.compile("(?i).*(created_?by|updated_?by|author).*");
@@ -93,8 +93,8 @@ class AuthorshipScenarioTest {
 	@BeforeEach
 	void setUp() throws Exception {
 		jdbcTemplate.update("DELETE FROM users");
-		adminId = testUsers.create("Administrador", ADMIN_LOGIN, PASSWORD, "ADMIN");
-		brunoId = testUsers.create("Bruno Lima", BRUNO_LOGIN, PASSWORD, "ADMIN");
+		adminId = testUsers.create("Administrador", ADMIN_LOGIN, PASSWORD, "COORDENADOR");
+		brunoId = testUsers.create("Bruno Lima", BRUNO_LOGIN, PASSWORD, "COORDENADOR");
 		adminBearer = testUsers.bearer(ADMIN_LOGIN, PASSWORD);
 		brunoBearer = testUsers.bearer(BRUNO_LOGIN, PASSWORD);
 	}
@@ -126,7 +126,7 @@ class AuthorshipScenarioTest {
 
 		// when
 		perform(brunoBearer, json(put(USERS + "/{id}", anaId), """
-				{"name": "Ana Souza Lima", "login": "ana.souza@educare.org", "role": "USER"}"""))
+				{"name": "Ana Souza Lima", "login": "ana.souza@educare.org", "role": "EDUCADOR"}"""))
 				.andExpect(status().isOk());
 
 		// then
@@ -159,7 +159,7 @@ class AuthorshipScenarioTest {
 
 		// when
 		perform(brunoBearer, json(put(USERS + "/{id}", anaId), """
-				{"name": "", "login": "ana", "role": "USER"}"""))
+				{"name": "", "login": "ana", "role": "EDUCADOR"}"""))
 				.andExpect(status().isBadRequest());
 
 		// then

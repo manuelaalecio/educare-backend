@@ -19,6 +19,8 @@ import com.manuelaalecio.educare_backend.shared.persistence.JpaAuditingConfigura
 import com.manuelaalecio.educare_backend.shared.testsupport.TestcontainersConfiguration;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.context.annotation.Import;
@@ -171,8 +173,20 @@ class UserRepositoryTest {
 			.hasMessageContaining("users_role_check");
 	}
 
+	@ParameterizedTest
+	@ValueSource(strings = {"ADMIN", "USER"})
+	void shouldViolateRoleCheckConstraintWhenRoleIsAFormerValue(String formerRole) {
+		// given
+		UUID id = UUID.randomUUID();
+
+		// when / then
+		assertThatThrownBy(() -> jdbcTemplate.update(INSERT_WITH_ROLE, id, formerRole))
+			.isInstanceOf(DataIntegrityViolationException.class)
+			.hasMessageContaining("users_role_check");
+	}
+
 	@Test
-	void shouldStoreUserRoleWhenRoleColumnIsOmitted() {
+	void shouldStoreEducatorRoleWhenRoleColumnIsOmitted() {
 		// given
 		UUID id = UUID.randomUUID();
 
@@ -182,31 +196,31 @@ class UserRepositoryTest {
 
 		// then
 		assertThat(jdbcTemplate.queryForObject("SELECT role FROM users WHERE id = ?", String.class, id))
-			.isEqualTo("USER");
+			.isEqualTo("EDUCADOR");
 	}
 
 	@Test
 	void shouldStoreRoleAsTextWhenUsersAreSaved() {
 		// given
-		User admin = new User("Ana Souza", "ana@educare.org", "hash", Role.ADMIN);
-		User user = new User("Bruno Lima", "bruno@educare.org", "hash", Role.USER);
+		User admin = new User("Ana Souza", "ana@educare.org", "hash", Role.COORDENADOR);
+		User user = new User("Bruno Lima", "bruno@educare.org", "hash", Role.EDUCADOR);
 
 		// when
 		userRepository.saveAndFlush(admin);
 		userRepository.saveAndFlush(user);
 
 		// then
-		assertThat(storedRole(admin.getId())).isEqualTo("ADMIN");
-		assertThat(storedRole(user.getId())).isEqualTo("USER");
+		assertThat(storedRole(admin.getId())).isEqualTo("COORDENADOR");
+		assertThat(storedRole(user.getId())).isEqualTo("EDUCADOR");
 	}
 
 	@Test
 	void shouldReadRoleAsEnumWhenStoredAsText() {
 		// given
 		UUID adminId = UUID.randomUUID();
-		jdbcTemplate.update(INSERT_WITH_ROLE, adminId, "ADMIN");
+		jdbcTemplate.update(INSERT_WITH_ROLE, adminId, "COORDENADOR");
 		UUID userId = UUID.randomUUID();
-		jdbcTemplate.update(INSERT_WITH_ROLE.replace("ana@", "bruno@"), userId, "USER");
+		jdbcTemplate.update(INSERT_WITH_ROLE.replace("ana@", "bruno@"), userId, "EDUCADOR");
 		entityManager.clear();
 
 		// when
@@ -214,8 +228,8 @@ class UserRepositoryTest {
 		User user = userRepository.findById(userId).orElseThrow();
 
 		// then
-		assertThat(admin.getRole()).isEqualTo(Role.ADMIN);
-		assertThat(user.getRole()).isEqualTo(Role.USER);
+		assertThat(admin.getRole()).isEqualTo(Role.COORDENADOR);
+		assertThat(user.getRole()).isEqualTo(Role.EDUCADOR);
 	}
 
 	@Test
@@ -262,12 +276,12 @@ class UserRepositoryTest {
 	void shouldReturnOnlyUsersWithRoleWhenFindingAllByRoleForUpdate() {
 		// given: rolled back at the end of the test, like the users created here
 		jdbcTemplate.update("DELETE FROM users");
-		User ana = userRepository.saveAndFlush(new User("Ana Souza", "ana@educare.org", "hash", Role.ADMIN));
-		User bruno = userRepository.saveAndFlush(new User("Bruno Lima", "bruno@educare.org", "hash", Role.ADMIN));
-		userRepository.saveAndFlush(new User("Carla Dias", "carla@educare.org", "hash", Role.USER));
+		User ana = userRepository.saveAndFlush(new User("Ana Souza", "ana@educare.org", "hash", Role.COORDENADOR));
+		User bruno = userRepository.saveAndFlush(new User("Bruno Lima", "bruno@educare.org", "hash", Role.COORDENADOR));
+		userRepository.saveAndFlush(new User("Carla Dias", "carla@educare.org", "hash", Role.EDUCADOR));
 
 		// when
-		List<User> admins = userRepository.findAllByRoleForUpdate(Role.ADMIN);
+		List<User> admins = userRepository.findAllByRoleForUpdate(Role.COORDENADOR);
 
 		// then
 		assertThat(admins).extracting(User::getId).containsExactlyInAnyOrder(ana.getId(), bruno.getId());
@@ -275,47 +289,47 @@ class UserRepositoryTest {
 
 	@Test
 	@Transactional(propagation = Propagation.NOT_SUPPORTED)
-	void shouldAcceptExactlyOneWhenTwoTransactionsDemoteDifferentAdminsConcurrently() throws Exception {
+	void shouldAcceptExactlyOneWhenTwoTransactionsDemoteDifferentCoordinatorsConcurrently() throws Exception {
 		// given: only two ADMINs; the ADMINs already stored (the seed) are demoted until the end of the test
-		List<UUID> storedAdmins = jdbcTemplate.queryForList("SELECT id FROM users WHERE role = 'ADMIN'", UUID.class);
-		jdbcTemplate.update("UPDATE users SET role = 'USER' WHERE role = 'ADMIN'");
+		List<UUID> storedCoordinators = jdbcTemplate.queryForList("SELECT id FROM users WHERE role = 'COORDENADOR'", UUID.class);
+		jdbcTemplate.update("UPDATE users SET role = 'EDUCADOR' WHERE role = 'COORDENADOR'");
 		ExecutorService executor = Executors.newFixedThreadPool(2);
 		try {
-			User ana = userRepository.saveAndFlush(new User("Ana Souza", "ana@educare.org", "hash", Role.ADMIN));
-			User bruno = userRepository.saveAndFlush(new User("Bruno Lima", "bruno@educare.org", "hash", Role.ADMIN));
+			User ana = userRepository.saveAndFlush(new User("Ana Souza", "ana@educare.org", "hash", Role.COORDENADOR));
+			User bruno = userRepository.saveAndFlush(new User("Bruno Lima", "bruno@educare.org", "hash", Role.COORDENADOR));
 			CyclicBarrier bothStarted = new CyclicBarrier(2);
 
 			// when
-			Future<Boolean> demoteAna = executor.submit(() -> demoteUnlessLastAdmin(ana.getId(), bothStarted));
-			Future<Boolean> demoteBruno = executor.submit(() -> demoteUnlessLastAdmin(bruno.getId(), bothStarted));
+			Future<Boolean> demoteAna = executor.submit(() -> demoteUnlessLastCoordinator(ana.getId(), bothStarted));
+			Future<Boolean> demoteBruno = executor.submit(() -> demoteUnlessLastCoordinator(bruno.getId(), bothStarted));
 
 			// then
 			assertThat(List.of(demoteAna.get(30, TimeUnit.SECONDS), demoteBruno.get(30, TimeUnit.SECONDS)))
 				.containsExactlyInAnyOrder(true, false);
-			assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM users WHERE role = 'ADMIN'", Integer.class))
+			assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM users WHERE role = 'COORDENADOR'", Integer.class))
 				.isEqualTo(1);
 		}
 		finally {
 			executor.shutdownNow();
 			jdbcTemplate.update("DELETE FROM users WHERE login IN ('ana@educare.org', 'bruno@educare.org')");
-			storedAdmins.forEach(id -> jdbcTemplate.update("UPDATE users SET role = 'ADMIN' WHERE id = ?", id));
+			storedCoordinators.forEach(id -> jdbcTemplate.update("UPDATE users SET role = 'COORDENADOR' WHERE id = ?", id));
 		}
 	}
 
 	/**
-	 * Does in its own transaction what {@code UserService} does before demoting an ADMIN. Both transactions are
+	 * Does in its own transaction what {@code UserService} does before demoting an COORDENADOR. Both transactions are
 	 * open, with their target already read, before either of them locks the ADMINs.
 	 *
 	 * @return whether the demotion was accepted
 	 */
-	private boolean demoteUnlessLastAdmin(UUID id, CyclicBarrier bothStarted) {
+	private boolean demoteUnlessLastCoordinator(UUID id, CyclicBarrier bothStarted) {
 		return new TransactionTemplate(transactionManager).execute(status -> {
 			User user = userRepository.findById(id).orElseThrow();
 			await(bothStarted);
-			if (userRepository.findAllByRoleForUpdate(Role.ADMIN).size() < 2) {
+			if (userRepository.findAllByRoleForUpdate(Role.COORDENADOR).size() < 2) {
 				return false;
 			}
-			user.changeRole(Role.USER);
+			user.changeRole(Role.EDUCADOR);
 			userRepository.flush();
 			return true;
 		});

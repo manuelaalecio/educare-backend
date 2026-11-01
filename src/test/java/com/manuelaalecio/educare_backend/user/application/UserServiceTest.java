@@ -19,7 +19,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import com.manuelaalecio.educare_backend.user.domain.InvalidCurrentPasswordException;
-import com.manuelaalecio.educare_backend.user.domain.LastAdminException;
+import com.manuelaalecio.educare_backend.user.domain.LastCoordinatorException;
 import com.manuelaalecio.educare_backend.user.domain.LoginAlreadyInUseException;
 import com.manuelaalecio.educare_backend.user.domain.NewPasswordSameAsCurrentException;
 import com.manuelaalecio.educare_backend.user.domain.NewPasswordSameAsLoginException;
@@ -75,15 +75,15 @@ class UserServiceTest {
 	}
 
 	private static User existingUser() {
-		return new User("Ana Souza", "ana.souza@educare.org", OLD_HASH, Role.USER);
+		return new User("Ana Souza", "ana.souza@educare.org", OLD_HASH, Role.EDUCADOR);
 	}
 
 	private static User admin(String login) {
-		return new User("Administrador", login, OLD_HASH, Role.ADMIN);
+		return new User("Administrador", login, OLD_HASH, Role.COORDENADOR);
 	}
 
 	private static User persisted() {
-		return new User("Persisted", "persisted@educare.org", HASH, Role.USER);
+		return new User("Persisted", "persisted@educare.org", HASH, Role.EDUCADOR);
 	}
 
 	// create
@@ -97,7 +97,7 @@ class UserServiceTest {
 		when(userRepository.saveAndFlush(any(User.class))).thenReturn(saved);
 
 		// when
-		var result = userService.create("  Ana Souza ", "Ana.Souza@Educare.org", PASSWORD, Role.USER);
+		var result = userService.create("  Ana Souza ", "Ana.Souza@Educare.org", PASSWORD, Role.EDUCADOR);
 
 		// then
 		assertThat(result).isSameAs(saved);
@@ -107,13 +107,13 @@ class UserServiceTest {
 		assertThat(toSave.getName()).isEqualTo("Ana Souza");
 		assertThat(toSave.getLogin()).isEqualTo("ana.souza@educare.org");
 		assertThat(toSave.getPasswordHash()).isEqualTo(HASH);
-		assertThat(toSave.getRole()).isEqualTo(Role.USER);
+		assertThat(toSave.getRole()).isEqualTo(Role.EDUCADOR);
 		verify(userRepository).existsByLogin("ana.souza@educare.org");
 		verify(passwordEncoder).encode(PASSWORD);
 	}
 
 	@Test
-	void shouldCreateUserWithUserRoleWhenRoleIsNull() {
+	void shouldCreateUserWithEducatorRoleWhenRoleIsNull() {
 		// given
 		when(passwordEncoder.encode(PASSWORD)).thenReturn(HASH);
 		when(userRepository.existsByLogin("ana.souza@educare.org")).thenReturn(false);
@@ -123,22 +123,22 @@ class UserServiceTest {
 		var result = userService.create("Ana Souza", "ana.souza@educare.org", PASSWORD, null);
 
 		// then
-		assertThat(result.getRole()).isEqualTo(Role.USER);
+		assertThat(result.getRole()).isEqualTo(Role.EDUCADOR);
 		assertThat(result.getPasswordHash()).isEqualTo(HASH);
 	}
 
 	@Test
-	void shouldCreateUserWithAdminRoleWhenRoleIsAdmin() {
+	void shouldCreateUserWithCoordinatorRoleWhenRoleIsCoordinator() {
 		// given
 		when(passwordEncoder.encode(PASSWORD)).thenReturn(HASH);
 		when(userRepository.existsByLogin("ana.souza@educare.org")).thenReturn(false);
 		when(userRepository.saveAndFlush(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
 		// when
-		var result = userService.create("Ana Souza", "ana.souza@educare.org", PASSWORD, Role.ADMIN);
+		var result = userService.create("Ana Souza", "ana.souza@educare.org", PASSWORD, Role.COORDENADOR);
 
 		// then
-		assertThat(result.getRole()).isEqualTo(Role.ADMIN);
+		assertThat(result.getRole()).isEqualTo(Role.COORDENADOR);
 		assertThat(result.getPasswordHash()).isEqualTo(HASH);
 	}
 
@@ -165,7 +165,7 @@ class UserServiceTest {
 		when(userRepository.saveAndFlush(any(User.class))).thenThrow(violation);
 
 		// when / then
-		assertThatThrownBy(() -> userService.create("Ana Souza", "ana.souza@educare.org", PASSWORD, Role.USER))
+		assertThatThrownBy(() -> userService.create("Ana Souza", "ana.souza@educare.org", PASSWORD, Role.EDUCADOR))
 				.isInstanceOf(LoginAlreadyInUseException.class)
 				.hasMessage("Login já está em uso");
 		verify(userRepository).saveAndFlush(any(User.class));
@@ -226,32 +226,32 @@ class UserServiceTest {
 		when(userRepository.saveAndFlush(user)).thenReturn(saved);
 
 		// when
-		var result = userService.update(ID, " Beatriz Lima ", "Beatriz@Educare.org", Role.ADMIN, ACTOR_ID);
+		var result = userService.update(ID, " Beatriz Lima ", "Beatriz@Educare.org", Role.COORDENADOR, ACTOR_ID);
 
 		// then
 		assertThat(result).isSameAs(saved);
 		assertThat(user.getName()).isEqualTo("Beatriz Lima");
 		assertThat(user.getLogin()).isEqualTo("beatriz@educare.org");
-		assertThat(user.getRole()).isEqualTo(Role.ADMIN);
+		assertThat(user.getRole()).isEqualTo(Role.COORDENADOR);
 		assertThat(user.getPasswordHash()).isEqualTo(OLD_HASH);
 		verify(userRepository).saveAndFlush(user);
 		verifyNoInteractions(passwordEncoder);
 	}
 
 	@Test
-	void shouldChangeRoleWhenUpdatingAdminToUserAndAnotherAdminExists() {
+	void shouldChangeRoleWhenUpdatingCoordinatorToEducatorAndAnotherCoordinatorExists() {
 		// given
-		var user = new User("Ana Souza", "ana.souza@educare.org", OLD_HASH, Role.ADMIN);
+		var user = new User("Ana Souza", "ana.souza@educare.org", OLD_HASH, Role.COORDENADOR);
 		when(userRepository.findById(ID)).thenReturn(Optional.of(user));
 		when(userRepository.existsByLoginAndIdNot("ana.souza@educare.org", ID)).thenReturn(false);
-		when(userRepository.findAllByRoleForUpdate(Role.ADMIN)).thenReturn(List.of(user, admin("bruno@educare.org")));
+		when(userRepository.findAllByRoleForUpdate(Role.COORDENADOR)).thenReturn(List.of(user, admin("bruno@educare.org")));
 		when(userRepository.saveAndFlush(user)).thenReturn(user);
 
 		// when
-		var result = userService.update(ID, "Ana Souza", "ana.souza@educare.org", Role.USER, ACTOR_ID);
+		var result = userService.update(ID, "Ana Souza", "ana.souza@educare.org", Role.EDUCADOR, ACTOR_ID);
 
 		// then
-		assertThat(result.getRole()).isEqualTo(Role.USER);
+		assertThat(result.getRole()).isEqualTo(Role.EDUCADOR);
 	}
 
 	@Test
@@ -263,7 +263,7 @@ class UserServiceTest {
 		when(userRepository.saveAndFlush(user)).thenReturn(user);
 
 		// when
-		var result = userService.update(ID, "Ana Souza Lima", "ANA.Souza@educare.org", Role.USER, ACTOR_ID);
+		var result = userService.update(ID, "Ana Souza Lima", "ANA.Souza@educare.org", Role.EDUCADOR, ACTOR_ID);
 
 		// then
 		assertThat(result.getLogin()).isEqualTo("ana.souza@educare.org");
@@ -280,11 +280,11 @@ class UserServiceTest {
 		when(userRepository.existsByLoginAndIdNot("beatriz@educare.org", ID)).thenReturn(true);
 
 		// when / then
-		assertThatThrownBy(() -> userService.update(ID, "Beatriz Lima", "BEATRIZ@educare.org", Role.ADMIN, ACTOR_ID))
+		assertThatThrownBy(() -> userService.update(ID, "Beatriz Lima", "BEATRIZ@educare.org", Role.COORDENADOR, ACTOR_ID))
 				.isInstanceOf(LoginAlreadyInUseException.class);
 		assertThat(user.getName()).isEqualTo("Ana Souza");
 		assertThat(user.getLogin()).isEqualTo("ana.souza@educare.org");
-		assertThat(user.getRole()).isEqualTo(Role.USER);
+		assertThat(user.getRole()).isEqualTo(Role.EDUCADOR);
 		verify(userRepository, never()).saveAndFlush(any());
 		verify(userRepository, never()).save(any());
 	}
@@ -298,7 +298,7 @@ class UserServiceTest {
 		when(userRepository.saveAndFlush(user)).thenThrow(new DataIntegrityViolationException("users_login_key"));
 
 		// when / then
-		assertThatThrownBy(() -> userService.update(ID, "Beatriz Lima", "beatriz@educare.org", Role.USER, ACTOR_ID))
+		assertThatThrownBy(() -> userService.update(ID, "Beatriz Lima", "beatriz@educare.org", Role.EDUCADOR, ACTOR_ID))
 				.isInstanceOf(LoginAlreadyInUseException.class)
 				.hasMessage("Login já está em uso");
 		verify(userRepository).saveAndFlush(user);
@@ -310,7 +310,7 @@ class UserServiceTest {
 		when(userRepository.findById(ID)).thenReturn(Optional.empty());
 
 		// when / then
-		assertThatThrownBy(() -> userService.update(ID, "Beatriz Lima", "beatriz@educare.org", Role.USER, ACTOR_ID))
+		assertThatThrownBy(() -> userService.update(ID, "Beatriz Lima", "beatriz@educare.org", Role.EDUCADOR, ACTOR_ID))
 				.isInstanceOf(UserNotFoundException.class);
 		verify(userRepository, never()).existsByLoginAndIdNot(anyString(), any());
 		verify(userRepository, never()).saveAndFlush(any());
@@ -351,7 +351,7 @@ class UserServiceTest {
 	}
 
 	@Test
-	void shouldUpdateUserWithoutQueryingAdminsWhenTargetIsUser() {
+	void shouldUpdateUserWithoutQueryingCoordinatorsWhenTargetIsEducator() {
 		// given
 		var user = existingUser();
 		when(userRepository.findById(ID)).thenReturn(Optional.of(user));
@@ -359,7 +359,7 @@ class UserServiceTest {
 		when(userRepository.saveAndFlush(user)).thenReturn(user);
 
 		// when
-		var result = userService.update(ID, "Ana Lima", "ana.souza@educare.org", Role.USER, ACTOR_ID);
+		var result = userService.update(ID, "Ana Lima", "ana.souza@educare.org", Role.EDUCADOR, ACTOR_ID);
 
 		// then
 		assertThat(result.getName()).isEqualTo("Ana Lima");
@@ -367,7 +367,7 @@ class UserServiceTest {
 	}
 
 	@Test
-	void shouldUpdateAdminWithoutQueryingAdminsWhenRoleStaysAdmin() {
+	void shouldUpdateCoordinatorWithoutQueryingCoordinatorsWhenRoleStaysCoordinator() {
 		// given
 		var user = admin("ana.souza@educare.org");
 		when(userRepository.findById(ID)).thenReturn(Optional.of(user));
@@ -375,43 +375,43 @@ class UserServiceTest {
 		when(userRepository.saveAndFlush(user)).thenReturn(user);
 
 		// when
-		var result = userService.update(ID, "Ana Souza", "ana.souza@educare.org", Role.ADMIN, ID);
+		var result = userService.update(ID, "Ana Souza", "ana.souza@educare.org", Role.COORDENADOR, ID);
 
 		// then
-		assertThat(result.getRole()).isEqualTo(Role.ADMIN);
+		assertThat(result.getRole()).isEqualTo(Role.COORDENADOR);
 		verify(userRepository, never()).findAllByRoleForUpdate(any());
 	}
 
 	@Test
-	void shouldDemoteSelfWhenAnotherAdminExists() {
+	void shouldDemoteSelfWhenAnotherCoordinatorExists() {
 		// given
 		var user = admin("ana.souza@educare.org");
 		when(userRepository.findById(ID)).thenReturn(Optional.of(user));
 		when(userRepository.existsByLoginAndIdNot("ana.souza@educare.org", ID)).thenReturn(false);
-		when(userRepository.findAllByRoleForUpdate(Role.ADMIN)).thenReturn(List.of(user, admin("bruno@educare.org")));
+		when(userRepository.findAllByRoleForUpdate(Role.COORDENADOR)).thenReturn(List.of(user, admin("bruno@educare.org")));
 		when(userRepository.saveAndFlush(user)).thenReturn(user);
 
 		// when
-		var result = userService.update(ID, "Ana Souza", "ana.souza@educare.org", Role.USER, ID);
+		var result = userService.update(ID, "Ana Souza", "ana.souza@educare.org", Role.EDUCADOR, ID);
 
 		// then
-		assertThat(result.getRole()).isEqualTo(Role.USER);
+		assertThat(result.getRole()).isEqualTo(Role.EDUCADOR);
 		verify(userRepository).saveAndFlush(user);
 	}
 
 	@Test
-	void shouldRejectDemotionAndSaveNothingWhenTargetIsTheLastAdmin() {
+	void shouldRejectDemotionAndSaveNothingWhenTargetIsTheLastCoordinator() {
 		// given
 		var user = admin("ana.souza@educare.org");
 		when(userRepository.findById(ID)).thenReturn(Optional.of(user));
 		when(userRepository.existsByLoginAndIdNot("ana.souza@educare.org", ID)).thenReturn(false);
-		when(userRepository.findAllByRoleForUpdate(Role.ADMIN)).thenReturn(List.of(user));
+		when(userRepository.findAllByRoleForUpdate(Role.COORDENADOR)).thenReturn(List.of(user));
 
 		// when / then
-		assertThatThrownBy(() -> userService.update(ID, "Ana Lima", "ana.souza@educare.org", Role.USER, ID))
-				.isInstanceOf(LastAdminException.class)
-				.hasMessage("O sistema precisa ter ao menos um usuário ADMIN");
-		assertThat(user.getRole()).isEqualTo(Role.ADMIN);
+		assertThatThrownBy(() -> userService.update(ID, "Ana Lima", "ana.souza@educare.org", Role.EDUCADOR, ID))
+				.isInstanceOf(LastCoordinatorException.class)
+				.hasMessage("O sistema precisa ter ao menos um(a) coordenador(a)");
+		assertThat(user.getRole()).isEqualTo(Role.COORDENADOR);
 		assertThat(user.getName()).isEqualTo("Administrador");
 		verify(userRepository, never()).saveAndFlush(any());
 		verify(userRepository, never()).save(any());
@@ -420,7 +420,7 @@ class UserServiceTest {
 	// delete
 
 	@Test
-	void shouldDeleteUserWithoutQueryingAdminsWhenTargetIsUser() {
+	void shouldDeleteUserWithoutQueryingCoordinatorsWhenTargetIsEducator() {
 		// given
 		var user = existingUser();
 		when(userRepository.findById(ID)).thenReturn(Optional.of(user));
@@ -434,11 +434,11 @@ class UserServiceTest {
 	}
 
 	@Test
-	void shouldDeleteAnotherAdminWhenTwoAdminsExist() {
+	void shouldDeleteAnotherCoordinatorWhenTwoCoordinatorsExist() {
 		// given
 		var user = admin("bruno@educare.org");
 		when(userRepository.findById(ID)).thenReturn(Optional.of(user));
-		when(userRepository.findAllByRoleForUpdate(Role.ADMIN))
+		when(userRepository.findAllByRoleForUpdate(Role.COORDENADOR))
 				.thenReturn(List.of(admin("ana.souza@educare.org"), user));
 
 		// when
@@ -449,15 +449,15 @@ class UserServiceTest {
 	}
 
 	@Test
-	void shouldRejectDeletionAndDeleteNothingWhenTargetIsTheLastAdmin() {
+	void shouldRejectDeletionAndDeleteNothingWhenTargetIsTheLastCoordinator() {
 		// given
 		var user = admin("bruno@educare.org");
 		when(userRepository.findById(ID)).thenReturn(Optional.of(user));
-		when(userRepository.findAllByRoleForUpdate(Role.ADMIN)).thenReturn(List.of(user));
+		when(userRepository.findAllByRoleForUpdate(Role.COORDENADOR)).thenReturn(List.of(user));
 
 		// when / then
 		assertThatThrownBy(() -> userService.delete(ID, ACTOR_ID))
-				.isInstanceOf(LastAdminException.class);
+				.isInstanceOf(LastCoordinatorException.class);
 		verify(userRepository, never()).delete(any());
 		verify(userRepository, never()).deleteById(any());
 	}
@@ -498,7 +498,7 @@ class UserServiceTest {
 		var result = userService.authenticate("ana.souza@educare.org", PASSWORD);
 
 		// then
-		assertThat(result).contains(new UserAccount(ID, "Ana Souza", "ana.souza@educare.org", "USER", CREATED_AT,
+		assertThat(result).contains(new UserAccount(ID, "Ana Souza", "ana.souza@educare.org", "EDUCADOR", CREATED_AT,
 				UPDATED_AT));
 	}
 
@@ -561,14 +561,14 @@ class UserServiceTest {
 	@Test
 	void shouldReturnAccountWithoutPasswordWhenFindingExistingAccount() {
 		// given
-		var user = persistedWithId(new User("Ana Souza", "ana.souza@educare.org", OLD_HASH, Role.ADMIN));
+		var user = persistedWithId(new User("Ana Souza", "ana.souza@educare.org", OLD_HASH, Role.COORDENADOR));
 		when(userRepository.findById(ID)).thenReturn(Optional.of(user));
 
 		// when
 		var result = userService.findAccount(ID);
 
 		// then
-		assertThat(result).isEqualTo(new UserAccount(ID, "Ana Souza", "ana.souza@educare.org", "ADMIN", CREATED_AT,
+		assertThat(result).isEqualTo(new UserAccount(ID, "Ana Souza", "ana.souza@educare.org", "COORDENADOR", CREATED_AT,
 				UPDATED_AT));
 	}
 

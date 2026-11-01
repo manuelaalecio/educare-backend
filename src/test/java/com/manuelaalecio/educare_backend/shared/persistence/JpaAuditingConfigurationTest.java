@@ -43,7 +43,7 @@ class JpaAuditingConfigurationTest {
 		// given
 		UUID userId = UUID.fromString("0190f4a2-0000-7000-8000-000000000001");
 		SecurityContextHolder.getContext()
-			.setAuthentication(new AuthenticatedUserAuthentication(new AuthenticatedUser(userId, "ADMIN")));
+			.setAuthentication(new AuthenticatedUserAuthentication(new AuthenticatedUser(userId, "COORDENADOR")));
 		AuditorAware<UUID> provider = new JpaAuditingConfiguration().auditingAuditorProvider();
 
 		// when

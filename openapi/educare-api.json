@@ -126,7 +126,7 @@
             "type" : "string"
           },
           "role" : {
-            "pattern" : "ADMIN|USER",
+            "pattern" : "COORDENADOR|EDUCADOR",
             "type" : "string"
           }
         },
@@ -331,7 +331,7 @@
             "type" : "string"
           },
           "role" : {
-            "pattern" : "ADMIN|USER",
+            "pattern" : "COORDENADOR|EDUCADOR",
             "type" : "string"
           }
         },

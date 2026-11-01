@@ -41,7 +41,7 @@ import com.manuelaalecio.educare_backend.shared.security.SecurityConfiguration;
 import com.manuelaalecio.educare_backend.shared.security.TokenOwner;
 import com.manuelaalecio.educare_backend.shared.testsupport.AccessTokens;
 import com.manuelaalecio.educare_backend.user.application.UserService;
-import com.manuelaalecio.educare_backend.user.domain.LastAdminException;
+import com.manuelaalecio.educare_backend.user.domain.LastCoordinatorException;
 import com.manuelaalecio.educare_backend.user.domain.LoginAlreadyInUseException;
 import com.manuelaalecio.educare_backend.user.domain.Role;
 import com.manuelaalecio.educare_backend.user.domain.SelfDeletionException;
@@ -52,6 +52,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -84,7 +85,7 @@ class UserControllerTest {
 	private static final String VALID_CREATE_BODY = """
 			{"name": "Ana Souza", "login": "ana.souza@educare.org", "password": "segredo123"}""";
 	private static final String VALID_UPDATE_BODY = """
-			{"name": "Ana Souza", "login": "ana.souza@educare.org", "role": "ADMIN"}""";
+			{"name": "Ana Souza", "login": "ana.souza@educare.org", "role": "COORDENADOR"}""";
 	private static final String VALID_PASSWORD_BODY = """
 			{"password": "novaSenha456"}""";
 
@@ -103,9 +104,9 @@ class UserControllerTest {
 	@BeforeEach
 	void setUpAuthenticatedUsers() {
 		given(lookup.findById(ADMIN_ID))
-				.willReturn(Optional.of(new TokenOwner(new AuthenticatedUser(ADMIN_ID, "ADMIN"), null)));
+				.willReturn(Optional.of(new TokenOwner(new AuthenticatedUser(ADMIN_ID, "COORDENADOR"), null)));
 		given(lookup.findById(USER_ID))
-				.willReturn(Optional.of(new TokenOwner(new AuthenticatedUser(USER_ID, "USER"), null)));
+				.willReturn(Optional.of(new TokenOwner(new AuthenticatedUser(USER_ID, "EDUCADOR"), null)));
 	}
 
 	// ---------- authentication and authorization (every endpoint) ----------
@@ -143,7 +144,7 @@ class UserControllerTest {
 
 	@ParameterizedTest(name = "{0}")
 	@MethodSource("endpoints")
-	void shouldRespondForbiddenProblemWithoutCallingServiceWhenUserIsNotAdmin(String endpoint,
+	void shouldRespondForbiddenProblemWithoutCallingServiceWhenUserIsNotCoordinator(String endpoint,
 			Supplier<MockHttpServletRequestBuilder> request) throws Exception {
 		// when
 		ResultActions result = mockMvc.perform(request.get()
@@ -164,10 +165,10 @@ class UserControllerTest {
 	void shouldCreateUserAndReturnLocationWhenBodyIsValid() throws Exception {
 		// given
 		given(userService.create("Ana Souza", "ana.souza@educare.org", "segredo123", null))
-				.willReturn(user(Role.USER));
+				.willReturn(user(Role.EDUCADOR));
 
 		// when
-		ResultActions result = performAsAdmin(postJson("/api/v1/users", VALID_CREATE_BODY));
+		ResultActions result = performAsCoordinator(postJson("/api/v1/users", VALID_CREATE_BODY));
 
 		// then
 		result.andExpect(status().isCreated())
@@ -176,7 +177,7 @@ class UserControllerTest {
 				.andExpect(jsonPath("$.id").value(ID.toString()))
 				.andExpect(jsonPath("$.name").value("Ana Souza"))
 				.andExpect(jsonPath("$.login").value("ana.souza@educare.org"))
-				.andExpect(jsonPath("$.role").value("USER"))
+				.andExpect(jsonPath("$.role").value("EDUCADOR"))
 				.andExpect(jsonPath("$.createdAt").value("2026-03-01T10:00:00Z"))
 				.andExpect(jsonPath("$.updatedAt").value("2026-03-02T09:00:00Z"))
 				.andExpect(jsonPath("$.password").doesNotExist())
@@ -188,10 +189,10 @@ class UserControllerTest {
 	@Test
 	void shouldPassNullRoleToServiceWhenRoleIsAbsentOnCreate() throws Exception {
 		// given
-		given(userService.create(anyString(), anyString(), anyString(), isNull())).willReturn(user(Role.USER));
+		given(userService.create(anyString(), anyString(), anyString(), isNull())).willReturn(user(Role.EDUCADOR));
 
 		// when
-		ResultActions result = performAsAdmin(postJson("/api/v1/users", VALID_CREATE_BODY));
+		ResultActions result = performAsCoordinator(postJson("/api/v1/users", VALID_CREATE_BODY));
 
 		// then
 		result.andExpect(status().isCreated());
@@ -199,23 +200,23 @@ class UserControllerTest {
 	}
 
 	@Test
-	void shouldPassAdminRoleToServiceWhenRoleIsAdminOnCreate() throws Exception {
+	void shouldPassCoordinatorRoleToServiceWhenRoleIsCoordinatorOnCreate() throws Exception {
 		// given
-		given(userService.create(anyString(), anyString(), anyString(), eq(Role.ADMIN))).willReturn(user(Role.ADMIN));
+		given(userService.create(anyString(), anyString(), anyString(), eq(Role.COORDENADOR))).willReturn(user(Role.COORDENADOR));
 
 		// when
-		ResultActions result = performAsAdmin(postJson("/api/v1/users", """
-				{"name": "Ana Souza", "login": "ana.souza@educare.org", "password": "segredo123", "role": "ADMIN"}"""));
+		ResultActions result = performAsCoordinator(postJson("/api/v1/users", """
+				{"name": "Ana Souza", "login": "ana.souza@educare.org", "password": "segredo123", "role": "COORDENADOR"}"""));
 
 		// then
-		result.andExpect(status().isCreated()).andExpect(jsonPath("$.role").value("ADMIN"));
-		then(userService).should().create("Ana Souza", "ana.souza@educare.org", "segredo123", Role.ADMIN);
+		result.andExpect(status().isCreated()).andExpect(jsonPath("$.role").value("COORDENADOR"));
+		then(userService).should().create("Ana Souza", "ana.souza@educare.org", "segredo123", Role.COORDENADOR);
 	}
 
 	@Test
 	void shouldReturnErrorsForNameLoginAndPasswordWhenCreateBodyIsEmpty() throws Exception {
 		// when
-		ResultActions result = performAsAdmin(postJson("/api/v1/users", "{}"));
+		ResultActions result = performAsCoordinator(postJson("/api/v1/users", "{}"));
 
 		// then
 		result.andExpect(status().isBadRequest())
@@ -229,7 +230,7 @@ class UserControllerTest {
 	@Test
 	void shouldRejectCreateWhenLoginIsNotAnEmail() throws Exception {
 		// when
-		ResultActions result = performAsAdmin(postJson("/api/v1/users", """
+		ResultActions result = performAsCoordinator(postJson("/api/v1/users", """
 				{"name": "Ana Souza", "login": "ana.souza", "password": "segredo123"}"""));
 
 		// then
@@ -240,7 +241,7 @@ class UserControllerTest {
 	@Test
 	void shouldRejectCreateWhenLoginDomainHasNoDot() throws Exception {
 		// when
-		ResultActions result = performAsAdmin(postJson("/api/v1/users", """
+		ResultActions result = performAsCoordinator(postJson("/api/v1/users", """
 				{"name": "Ana Souza", "login": "ana@educare", "password": "segredo123"}"""));
 
 		// then
@@ -254,7 +255,7 @@ class UserControllerTest {
 		String login = "a".repeat(243) + "@educare.org";
 
 		// when
-		ResultActions result = performAsAdmin(postJson("/api/v1/users", """
+		ResultActions result = performAsCoordinator(postJson("/api/v1/users", """
 				{"name": "Ana Souza", "login": "%s", "password": "segredo123"}""".formatted(login)));
 
 		// then
@@ -266,7 +267,7 @@ class UserControllerTest {
 	@Test
 	void shouldRejectCreateWhenNameIsBlank() throws Exception {
 		// when
-		ResultActions result = performAsAdmin(postJson("/api/v1/users", """
+		ResultActions result = performAsCoordinator(postJson("/api/v1/users", """
 				{"name": "   ", "login": "ana.souza@educare.org", "password": "segredo123"}"""));
 
 		// then
@@ -277,7 +278,7 @@ class UserControllerTest {
 	@Test
 	void shouldRejectCreateWhenNameIsLongerThan150Characters() throws Exception {
 		// when
-		ResultActions result = performAsAdmin(postJson("/api/v1/users", """
+		ResultActions result = performAsCoordinator(postJson("/api/v1/users", """
 				{"name": "%s", "login": "ana.souza@educare.org", "password": "segredo123"}""".formatted("a".repeat(151))));
 
 		// then
@@ -288,7 +289,7 @@ class UserControllerTest {
 	@Test
 	void shouldRejectCreateWhenPasswordIsShorterThan8Characters() throws Exception {
 		// when
-		ResultActions result = performAsAdmin(postJson("/api/v1/users", """
+		ResultActions result = performAsCoordinator(postJson("/api/v1/users", """
 				{"name": "Ana Souza", "login": "ana.souza@educare.org", "password": "1234567"}"""));
 
 		// then
@@ -299,7 +300,7 @@ class UserControllerTest {
 	@Test
 	void shouldRejectCreateWhenPasswordIsLongerThan72Characters() throws Exception {
 		// when
-		ResultActions result = performAsAdmin(postJson("/api/v1/users", """
+		ResultActions result = performAsCoordinator(postJson("/api/v1/users", """
 				{"name": "Ana Souza", "login": "ana.souza@educare.org", "password": "%s"}""".formatted("a".repeat(73))));
 
 		// then
@@ -313,7 +314,7 @@ class UserControllerTest {
 		String password = "ç".repeat(40);
 
 		// when
-		ResultActions result = performAsAdmin(postJson("/api/v1/users", """
+		ResultActions result = performAsCoordinator(postJson("/api/v1/users", """
 				{"name": "Ana Souza", "login": "ana.souza@educare.org", "password": "%s"}""".formatted(password)));
 
 		// then
@@ -323,9 +324,9 @@ class UserControllerTest {
 	}
 
 	@Test
-	void shouldRejectCreateWhenRoleIsNotAdminNorUser() throws Exception {
+	void shouldRejectCreateWhenRoleIsNotCoordinatorNorEducator() throws Exception {
 		// when
-		ResultActions result = performAsAdmin(postJson("/api/v1/users", """
+		ResultActions result = performAsCoordinator(postJson("/api/v1/users", """
 				{"name": "Ana Souza", "login": "ana.souza@educare.org", "password": "segredo123", "role": "SUPER"}"""));
 
 		// then
@@ -333,10 +334,24 @@ class UserControllerTest {
 		then(userService).shouldHaveNoInteractions();
 	}
 
+	@ParameterizedTest
+	@ValueSource(strings = {"ADMIN", "USER"})
+	void shouldRejectCreateWithRoleMessageWhenRoleIsAFormerValue(String formerRole) throws Exception {
+		// when
+		ResultActions result = performAsCoordinator(postJson("/api/v1/users", """
+				{"name": "Ana Souza", "login": "ana.souza@educare.org", "password": "segredo123", "role": "%s"}"""
+				.formatted(formerRole)));
+
+		// then
+		expectSingleFieldError(result, "role");
+		result.andExpect(jsonPath("$.errors[0].message").value("deve ser COORDENADOR ou EDUCADOR"));
+		then(userService).shouldHaveNoInteractions();
+	}
+
 	@Test
 	void shouldRejectCreateWhenRoleIsNotUpperCase() throws Exception {
 		// when
-		ResultActions result = performAsAdmin(postJson("/api/v1/users", """
+		ResultActions result = performAsCoordinator(postJson("/api/v1/users", """
 				{"name": "Ana Souza", "login": "ana.souza@educare.org", "password": "segredo123", "role": "admin"}"""));
 
 		// then
@@ -350,7 +365,7 @@ class UserControllerTest {
 		given(userService.create(any(), any(), any(), any())).willThrow(new LoginAlreadyInUseException());
 
 		// when
-		ResultActions result = performAsAdmin(postJson("/api/v1/users", """
+		ResultActions result = performAsCoordinator(postJson("/api/v1/users", """
 				{"name": "Ana Souza", "login": "ANA.SOUZA@EDUCARE.ORG", "password": "segredo123"}"""));
 
 		// then
@@ -365,7 +380,7 @@ class UserControllerTest {
 	@Test
 	void shouldReturnBadRequestWhenCreateBodyIsNotValidJson() throws Exception {
 		// when
-		ResultActions result = performAsAdmin(postJson("/api/v1/users", "{\"name\": \"Ana\""));
+		ResultActions result = performAsCoordinator(postJson("/api/v1/users", "{\"name\": \"Ana\""));
 
 		// then
 		result.andExpect(status().isBadRequest()).andExpect(content().contentType(PROBLEM_JSON));
@@ -377,10 +392,10 @@ class UserControllerTest {
 	@Test
 	void shouldReturnPagedModelWithoutPasswordWhenListingUsers() throws Exception {
 		// given
-		given(userService.list(any())).willAnswer(invocation -> page(invocation.getArgument(0), 3, user(Role.USER)));
+		given(userService.list(any())).willAnswer(invocation -> page(invocation.getArgument(0), 3, user(Role.EDUCADOR)));
 
 		// when
-		ResultActions result = performAsAdmin(get("/api/v1/users").param("size", "2"));
+		ResultActions result = performAsCoordinator(get("/api/v1/users").param("size", "2"));
 
 		// then
 		result.andExpect(status().isOk())
@@ -388,7 +403,7 @@ class UserControllerTest {
 				.andExpect(jsonPath("$.content[0].id").value(ID.toString()))
 				.andExpect(jsonPath("$.content[0].name").value("Ana Souza"))
 				.andExpect(jsonPath("$.content[0].login").value("ana.souza@educare.org"))
-				.andExpect(jsonPath("$.content[0].role").value("USER"))
+				.andExpect(jsonPath("$.content[0].role").value("EDUCADOR"))
 				.andExpect(jsonPath("$.content[0].createdAt").value("2026-03-01T10:00:00Z"))
 				.andExpect(jsonPath("$.content[0].updatedAt").value("2026-03-02T09:00:00Z"))
 				.andExpect(jsonPath("$.content[0].password").doesNotExist())
@@ -406,7 +421,7 @@ class UserControllerTest {
 		given(userService.list(any())).willAnswer(invocation -> page(invocation.getArgument(0), 0));
 
 		// when
-		ResultActions result = performAsAdmin(get("/api/v1/users"));
+		ResultActions result = performAsCoordinator(get("/api/v1/users"));
 
 		// then
 		result.andExpect(status().isOk())
@@ -421,10 +436,10 @@ class UserControllerTest {
 	@Test
 	void shouldLimitPageSizeTo100WhenRequestedSizeIsLarger() throws Exception {
 		// given
-		given(userService.list(any())).willAnswer(invocation -> page(invocation.getArgument(0), 1, user(Role.USER)));
+		given(userService.list(any())).willAnswer(invocation -> page(invocation.getArgument(0), 1, user(Role.EDUCADOR)));
 
 		// when
-		ResultActions result = performAsAdmin(get("/api/v1/users").param("size", "500"));
+		ResultActions result = performAsCoordinator(get("/api/v1/users").param("size", "500"));
 
 		// then
 		result.andExpect(status().isOk()).andExpect(jsonPath("$.page.size").value(100));
@@ -437,7 +452,7 @@ class UserControllerTest {
 		given(userService.list(any())).willAnswer(invocation -> page(invocation.getArgument(0), 0));
 
 		// when
-		ResultActions result = performAsAdmin(get("/api/v1/users").param("sort", "login,desc").param("page", "1"));
+		ResultActions result = performAsCoordinator(get("/api/v1/users").param("sort", "login,desc").param("page", "1"));
 
 		// then
 		result.andExpect(status().isOk());
@@ -452,7 +467,7 @@ class UserControllerTest {
 		given(userService.list(any())).willAnswer(invocation -> page(invocation.getArgument(0), 0));
 
 		// when
-		ResultActions result = performAsAdmin(get("/api/v1/users").param("sort", "createdAt,asc"));
+		ResultActions result = performAsCoordinator(get("/api/v1/users").param("sort", "createdAt,asc"));
 
 		// then
 		result.andExpect(status().isOk());
@@ -462,7 +477,7 @@ class UserControllerTest {
 	@Test
 	void shouldReturnBadRequestWhenSortingByPassword() throws Exception {
 		// when
-		ResultActions result = performAsAdmin(get("/api/v1/users").param("sort", "password"));
+		ResultActions result = performAsCoordinator(get("/api/v1/users").param("sort", "password"));
 
 		// then
 		result.andExpect(status().isBadRequest())
@@ -474,7 +489,7 @@ class UserControllerTest {
 	@Test
 	void shouldReturnBadRequestWhenSortingByPasswordHashAfterAnAllowedProperty() throws Exception {
 		// when
-		ResultActions result = performAsAdmin(get("/api/v1/users")
+		ResultActions result = performAsCoordinator(get("/api/v1/users")
 				.param("sort", "name,asc")
 				.param("sort", "passwordHash,desc"));
 
@@ -488,17 +503,17 @@ class UserControllerTest {
 	@Test
 	void shouldReturnUserWithoutPasswordWhenUserExists() throws Exception {
 		// given
-		given(userService.findById(ID)).willReturn(user(Role.USER));
+		given(userService.findById(ID)).willReturn(user(Role.EDUCADOR));
 
 		// when
-		ResultActions result = performAsAdmin(get("/api/v1/users/{id}", ID));
+		ResultActions result = performAsCoordinator(get("/api/v1/users/{id}", ID));
 
 		// then
 		result.andExpect(status().isOk())
 				.andExpect(jsonPath("$.id").value(ID.toString()))
 				.andExpect(jsonPath("$.name").value("Ana Souza"))
 				.andExpect(jsonPath("$.login").value("ana.souza@educare.org"))
-				.andExpect(jsonPath("$.role").value("USER"))
+				.andExpect(jsonPath("$.role").value("EDUCADOR"))
 				.andExpect(jsonPath("$.createdAt").value("2026-03-01T10:00:00Z"))
 				.andExpect(jsonPath("$.updatedAt").value("2026-03-02T09:00:00Z"))
 				.andExpect(jsonPath("$.password").doesNotExist())
@@ -512,7 +527,7 @@ class UserControllerTest {
 		given(userService.findById(ID)).willThrow(new UserNotFoundException());
 
 		// when
-		ResultActions result = performAsAdmin(get("/api/v1/users/{id}", ID));
+		ResultActions result = performAsCoordinator(get("/api/v1/users/{id}", ID));
 
 		// then
 		result.andExpect(status().isNotFound())
@@ -524,7 +539,7 @@ class UserControllerTest {
 	@Test
 	void shouldReturnBadRequestWhenIdIsNotAUuid() throws Exception {
 		// when
-		ResultActions result = performAsAdmin(get("/api/v1/users/abc"));
+		ResultActions result = performAsCoordinator(get("/api/v1/users/abc"));
 
 		// then
 		result.andExpect(status().isBadRequest())
@@ -538,28 +553,28 @@ class UserControllerTest {
 	@Test
 	void shouldUpdateUserWhenBodyIsValid() throws Exception {
 		// given
-		given(userService.update(eq(ID), eq("Ana Souza"), eq("ana.souza@educare.org"), eq(Role.ADMIN), eq(ADMIN_ID)))
-				.willReturn(user(Role.ADMIN));
+		given(userService.update(eq(ID), eq("Ana Souza"), eq("ana.souza@educare.org"), eq(Role.COORDENADOR), eq(ADMIN_ID)))
+				.willReturn(user(Role.COORDENADOR));
 
 		// when
-		ResultActions result = performAsAdmin(putJson("/api/v1/users/" + ID, VALID_UPDATE_BODY));
+		ResultActions result = performAsCoordinator(putJson("/api/v1/users/" + ID, VALID_UPDATE_BODY));
 
 		// then
 		result.andExpect(status().isOk())
 				.andExpect(jsonPath("$.id").value(ID.toString()))
 				.andExpect(jsonPath("$.name").value("Ana Souza"))
 				.andExpect(jsonPath("$.login").value("ana.souza@educare.org"))
-				.andExpect(jsonPath("$.role").value("ADMIN"))
+				.andExpect(jsonPath("$.role").value("COORDENADOR"))
 				.andExpect(jsonPath("$.password").doesNotExist())
 				.andExpect(jsonPath("$.passwordHash").doesNotExist())
 				.andExpect(content().string(not(containsString(PASSWORD_HASH))));
-		then(userService).should().update(ID, "Ana Souza", "ana.souza@educare.org", Role.ADMIN, ADMIN_ID);
+		then(userService).should().update(ID, "Ana Souza", "ana.souza@educare.org", Role.COORDENADOR, ADMIN_ID);
 	}
 
 	@Test
 	void shouldRejectUpdateWhenRoleIsAbsent() throws Exception {
 		// when
-		ResultActions result = performAsAdmin(putJson("/api/v1/users/" + ID, """
+		ResultActions result = performAsCoordinator(putJson("/api/v1/users/" + ID, """
 				{"name": "Ana Souza", "login": "ana.souza@educare.org"}"""));
 
 		// then
@@ -568,9 +583,9 @@ class UserControllerTest {
 	}
 
 	@Test
-	void shouldRejectUpdateWhenRoleIsNotAdminNorUser() throws Exception {
+	void shouldRejectUpdateWhenRoleIsNotCoordinatorNorEducator() throws Exception {
 		// when
-		ResultActions result = performAsAdmin(putJson("/api/v1/users/" + ID, """
+		ResultActions result = performAsCoordinator(putJson("/api/v1/users/" + ID, """
 				{"name": "Ana Souza", "login": "ana.souza@educare.org", "role": "SUPER"}"""));
 
 		// then
@@ -578,11 +593,24 @@ class UserControllerTest {
 		then(userService).shouldHaveNoInteractions();
 	}
 
+	@ParameterizedTest
+	@ValueSource(strings = {"ADMIN", "USER"})
+	void shouldRejectUpdateWithRoleMessageWhenRoleIsAFormerValue(String formerRole) throws Exception {
+		// when
+		ResultActions result = performAsCoordinator(putJson("/api/v1/users/" + ID, """
+				{"name": "Ana Souza", "login": "ana.souza@educare.org", "role": "%s"}""".formatted(formerRole)));
+
+		// then
+		expectSingleFieldError(result, "role");
+		result.andExpect(jsonPath("$.errors[0].message").value("deve ser COORDENADOR ou EDUCADOR"));
+		then(userService).shouldHaveNoInteractions();
+	}
+
 	@Test
 	void shouldReturnErrorsForNameAndLoginWhenUpdateDataIsInvalid() throws Exception {
 		// when
-		ResultActions result = performAsAdmin(putJson("/api/v1/users/" + ID, """
-				{"name": "", "login": "ana", "role": "USER"}"""));
+		ResultActions result = performAsCoordinator(putJson("/api/v1/users/" + ID, """
+				{"name": "", "login": "ana", "role": "EDUCADOR"}"""));
 
 		// then
 		result.andExpect(status().isBadRequest())
@@ -594,8 +622,8 @@ class UserControllerTest {
 	@Test
 	void shouldRejectUpdateWhenLoginDomainHasNoDot() throws Exception {
 		// when
-		ResultActions result = performAsAdmin(putJson("/api/v1/users/" + ID, """
-				{"name": "Ana Souza", "login": "ana@educare", "role": "USER"}"""));
+		ResultActions result = performAsCoordinator(putJson("/api/v1/users/" + ID, """
+				{"name": "Ana Souza", "login": "ana@educare", "role": "EDUCADOR"}"""));
 
 		// then
 		expectSingleFieldError(result, "login");
@@ -608,7 +636,7 @@ class UserControllerTest {
 		given(userService.update(any(), any(), any(), any(), any())).willThrow(new UserNotFoundException());
 
 		// when
-		ResultActions result = performAsAdmin(putJson("/api/v1/users/" + ID, VALID_UPDATE_BODY));
+		ResultActions result = performAsCoordinator(putJson("/api/v1/users/" + ID, VALID_UPDATE_BODY));
 
 		// then
 		result.andExpect(status().isNotFound()).andExpect(content().contentType(PROBLEM_JSON));
@@ -620,7 +648,7 @@ class UserControllerTest {
 		given(userService.update(any(), any(), any(), any(), any())).willThrow(new LoginAlreadyInUseException());
 
 		// when
-		ResultActions result = performAsAdmin(putJson("/api/v1/users/" + ID, VALID_UPDATE_BODY));
+		ResultActions result = performAsCoordinator(putJson("/api/v1/users/" + ID, VALID_UPDATE_BODY));
 
 		// then
 		result.andExpect(status().isConflict())
@@ -629,23 +657,23 @@ class UserControllerTest {
 	}
 
 	@Test
-	void shouldReturnConflictProblemWhenDemotingTheLastAdmin() throws Exception {
+	void shouldReturnConflictProblemWhenDemotingTheLastCoordinator() throws Exception {
 		// given
-		given(userService.update(ID, "Ana Souza", "ana.souza@educare.org", Role.USER, ADMIN_ID))
-				.willThrow(new LastAdminException());
+		given(userService.update(ID, "Ana Souza", "ana.souza@educare.org", Role.EDUCADOR, ADMIN_ID))
+				.willThrow(new LastCoordinatorException());
 
 		// when
-		ResultActions result = performAsAdmin(putJson("/api/v1/users/" + ID, """
-				{"name": "Ana Souza", "login": "ana.souza@educare.org", "role": "USER"}"""));
+		ResultActions result = performAsCoordinator(putJson("/api/v1/users/" + ID, """
+				{"name": "Ana Souza", "login": "ana.souza@educare.org", "role": "EDUCADOR"}"""));
 
 		// then
-		expectConflict(result, "O sistema precisa ter ao menos um usuário ADMIN");
+		expectConflict(result, "O sistema precisa ter ao menos um(a) coordenador(a)");
 	}
 
 	@Test
 	void shouldReturnBadRequestWhenUpdateBodyIsNotValidJson() throws Exception {
 		// when
-		ResultActions result = performAsAdmin(putJson("/api/v1/users/" + ID, "{\"name\": \"Ana\""));
+		ResultActions result = performAsCoordinator(putJson("/api/v1/users/" + ID, "{\"name\": \"Ana\""));
 
 		// then
 		result.andExpect(status().isBadRequest()).andExpect(content().contentType(PROBLEM_JSON));
@@ -655,7 +683,7 @@ class UserControllerTest {
 	@Test
 	void shouldReturnBadRequestWhenUpdatingWithMalformedId() throws Exception {
 		// when
-		ResultActions result = performAsAdmin(putJson("/api/v1/users/abc", VALID_UPDATE_BODY));
+		ResultActions result = performAsCoordinator(putJson("/api/v1/users/abc", VALID_UPDATE_BODY));
 
 		// then
 		result.andExpect(status().isBadRequest()).andExpect(content().contentType(PROBLEM_JSON));
@@ -667,7 +695,7 @@ class UserControllerTest {
 	@Test
 	void shouldChangePasswordAndReturnNoContentWhenPasswordIsValid() throws Exception {
 		// when
-		ResultActions result = performAsAdmin(putJson("/api/v1/users/" + ID + "/password", """
+		ResultActions result = performAsCoordinator(putJson("/api/v1/users/" + ID + "/password", """
 				{"password": "novaSenha456"}"""));
 
 		// then
@@ -678,7 +706,7 @@ class UserControllerTest {
 	@Test
 	void shouldRejectPasswordChangeWhenPasswordIsTooShort() throws Exception {
 		// when
-		ResultActions result = performAsAdmin(putJson("/api/v1/users/" + ID + "/password", """
+		ResultActions result = performAsCoordinator(putJson("/api/v1/users/" + ID + "/password", """
 				{"password": "curta"}"""));
 
 		// then
@@ -689,7 +717,7 @@ class UserControllerTest {
 	@Test
 	void shouldRejectPasswordChangeWhenPasswordIsAbsent() throws Exception {
 		// when
-		ResultActions result = performAsAdmin(putJson("/api/v1/users/" + ID + "/password", "{}"));
+		ResultActions result = performAsCoordinator(putJson("/api/v1/users/" + ID + "/password", "{}"));
 
 		// then
 		expectSingleFieldError(result, "password");
@@ -699,7 +727,7 @@ class UserControllerTest {
 	@Test
 	void shouldRejectPasswordChangeWhenPasswordExceeds72BytesInUtf8() throws Exception {
 		// when
-		ResultActions result = performAsAdmin(putJson("/api/v1/users/" + ID + "/password", """
+		ResultActions result = performAsCoordinator(putJson("/api/v1/users/" + ID + "/password", """
 				{"password": "%s"}""".formatted("ç".repeat(40))));
 
 		// then
@@ -713,7 +741,7 @@ class UserControllerTest {
 		willThrow(new UserNotFoundException()).given(userService).changePassword(ID, "novaSenha456");
 
 		// when
-		ResultActions result = performAsAdmin(putJson("/api/v1/users/" + ID + "/password", """
+		ResultActions result = performAsCoordinator(putJson("/api/v1/users/" + ID + "/password", """
 				{"password": "novaSenha456"}"""));
 
 		// then
@@ -723,7 +751,7 @@ class UserControllerTest {
 	@Test
 	void shouldReturnBadRequestWhenChangingPasswordWithMalformedId() throws Exception {
 		// when
-		ResultActions result = performAsAdmin(putJson("/api/v1/users/abc/password", """
+		ResultActions result = performAsCoordinator(putJson("/api/v1/users/abc/password", """
 				{"password": "novaSenha456"}"""));
 
 		// then
@@ -736,7 +764,7 @@ class UserControllerTest {
 	@Test
 	void shouldDeleteUserAndReturnNoContentWhenUserExists() throws Exception {
 		// when
-		ResultActions result = performAsAdmin(delete("/api/v1/users/{id}", ID));
+		ResultActions result = performAsCoordinator(delete("/api/v1/users/{id}", ID));
 
 		// then
 		result.andExpect(status().isNoContent()).andExpect(content().string(""));
@@ -749,7 +777,7 @@ class UserControllerTest {
 		willThrow(new UserNotFoundException()).given(userService).delete(ID, ADMIN_ID);
 
 		// when
-		ResultActions result = performAsAdmin(delete("/api/v1/users/{id}", ID));
+		ResultActions result = performAsCoordinator(delete("/api/v1/users/{id}", ID));
 
 		// then
 		result.andExpect(status().isNotFound())
@@ -758,33 +786,33 @@ class UserControllerTest {
 	}
 
 	@Test
-	void shouldReturnConflictProblemWhenAdminDeletesThemselves() throws Exception {
+	void shouldReturnConflictProblemWhenCoordinatorDeletesThemselves() throws Exception {
 		// given
 		willThrow(new SelfDeletionException()).given(userService).delete(ADMIN_ID, ADMIN_ID);
 
 		// when
-		ResultActions result = performAsAdmin(delete("/api/v1/users/{id}", ADMIN_ID));
+		ResultActions result = performAsCoordinator(delete("/api/v1/users/{id}", ADMIN_ID));
 
 		// then
 		expectConflict(result, "Não é permitido excluir o próprio usuário");
 	}
 
 	@Test
-	void shouldReturnConflictProblemWhenDeletingTheLastAdmin() throws Exception {
+	void shouldReturnConflictProblemWhenDeletingTheLastCoordinator() throws Exception {
 		// given
-		willThrow(new LastAdminException()).given(userService).delete(ID, ADMIN_ID);
+		willThrow(new LastCoordinatorException()).given(userService).delete(ID, ADMIN_ID);
 
 		// when
-		ResultActions result = performAsAdmin(delete("/api/v1/users/{id}", ID));
+		ResultActions result = performAsCoordinator(delete("/api/v1/users/{id}", ID));
 
 		// then
-		expectConflict(result, "O sistema precisa ter ao menos um usuário ADMIN");
+		expectConflict(result, "O sistema precisa ter ao menos um(a) coordenador(a)");
 	}
 
 	@Test
 	void shouldReturnBadRequestWhenDeletingWithMalformedId() throws Exception {
 		// when
-		ResultActions result = performAsAdmin(delete("/api/v1/users/abc"));
+		ResultActions result = performAsCoordinator(delete("/api/v1/users/abc"));
 
 		// then
 		result.andExpect(status().isBadRequest()).andExpect(content().contentType(PROBLEM_JSON));
@@ -793,8 +821,8 @@ class UserControllerTest {
 
 	// ---------- helpers ----------
 
-	/** Performs the request as an authenticated ADMIN, the only role allowed on the user endpoints. */
-	private ResultActions performAsAdmin(MockHttpServletRequestBuilder request) throws Exception {
+	/** Performs the request as an authenticated COORDENADOR, the only role allowed on the user endpoints. */
+	private ResultActions performAsCoordinator(MockHttpServletRequestBuilder request) throws Exception {
 		return mockMvc.perform(request.header(HttpHeaders.AUTHORIZATION, accessTokens.bearer(ADMIN_ID)));
 	}
 

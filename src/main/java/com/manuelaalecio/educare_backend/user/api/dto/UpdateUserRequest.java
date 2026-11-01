@@ -21,6 +21,6 @@ public record UpdateUserRequest(
 		String login,
 
 		@NotNull(message = "é obrigatória")
-		@Pattern(regexp = "ADMIN|USER", message = "deve ser ADMIN ou USER")
+		@Pattern(regexp = "COORDENADOR|EDUCADOR", message = "deve ser COORDENADOR ou EDUCADOR")
 		String role) {
 }

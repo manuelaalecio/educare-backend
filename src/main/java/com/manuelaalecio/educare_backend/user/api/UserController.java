@@ -43,7 +43,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 @RestController
 @RequestMapping(UserController.BASE_PATH)
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("hasRole('COORDENADOR')")
 @ForbiddenResponse
 public class UserController {
 
