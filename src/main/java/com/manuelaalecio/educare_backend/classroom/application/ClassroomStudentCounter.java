@@ -5,9 +5,9 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Counts the students of the classes. The module that links children to classes (enrollment) implements it, so
- * {@code classroom} never depends on that module; until it exists, {@link NoEnrollmentStudentCounter} is the only
- * implementation.
+ * Counts the children of the classes ("students" in the names, kept for compatibility). The {@code child} module,
+ * which owns the links between children and classes, implements it, so {@code classroom} never depends on that
+ * module. A child counts while its link to the class is active.
  */
 public interface ClassroomStudentCounter {
 
@@ -19,5 +19,10 @@ public interface ClassroomStudentCounter {
 	 * @return the counts by class id; a class missing from the map has {@link StudentCounts#ZERO}
 	 */
 	Map<UUID, StudentCounts> countFor(Collection<UUID> classroomIds);
+
+	/**
+	 * @return whether some child has already left the class (it has history), regardless of the active children
+	 */
+	boolean hasPastStudents(UUID classroomId);
 
 }

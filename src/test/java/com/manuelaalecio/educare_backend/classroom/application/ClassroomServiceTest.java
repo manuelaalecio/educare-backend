@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -17,6 +18,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import com.manuelaalecio.educare_backend.classroom.domain.Classroom;
+import com.manuelaalecio.educare_backend.classroom.domain.ClassroomHasHistoryException;
 import com.manuelaalecio.educare_backend.classroom.domain.ClassroomHasStudentsException;
 import com.manuelaalecio.educare_backend.classroom.domain.ClassroomNameAlreadyInUseException;
 import com.manuelaalecio.educare_backend.classroom.domain.ClassroomNotFoundException;
@@ -263,6 +265,50 @@ class ClassroomServiceTest {
 
 		// then
 		verify(classroomRepository).delete(classroom);
+		verify(classroomRepository).flush();
+	}
+
+	@Test
+	void shouldRejectDeletionWhenClassroomHasOnlyHistory() {
+		// given
+		Classroom classroom = withId(new Classroom("Turma 1"), ID);
+		when(classroomRepository.findById(ID)).thenReturn(Optional.of(classroom));
+		when(studentCounter.countFor(ID)).thenReturn(StudentCounts.ZERO);
+		when(studentCounter.hasPastStudents(ID)).thenReturn(true);
+
+		// when / then
+		assertThatThrownBy(() -> classroomService.delete(ID)).isInstanceOf(ClassroomHasHistoryException.class)
+				.hasMessage("A turma tem histórico de crianças e não pode ser excluída");
+		verify(classroomRepository, never()).delete(any());
+	}
+
+	@Test
+	void shouldRejectDeletionAsInUseWhenChildIsLinkedMeanwhile() {
+		// given
+		Classroom classroom = withId(new Classroom("Turma 1"), ID);
+		when(classroomRepository.findById(ID)).thenReturn(Optional.of(classroom));
+		when(studentCounter.countFor(ID)).thenReturn(StudentCounts.ZERO);
+		var foreignKey = new ConstraintViolationException("foreign key",
+				new SQLException("foreign key", "23503"), "delete from classrooms", "any_fkey");
+		willThrow(new DataIntegrityViolationException("could not execute statement", foreignKey))
+				.given(classroomRepository).flush();
+
+		// when / then
+		assertThatThrownBy(() -> classroomService.delete(ID)).isInstanceOf(ClassroomHasStudentsException.class);
+	}
+
+	@Test
+	void shouldRethrowViolationWhenDeletionFailsForAnotherReason() {
+		// given
+		Classroom classroom = withId(new Classroom("Turma 1"), ID);
+		when(classroomRepository.findById(ID)).thenReturn(Optional.of(classroom));
+		when(studentCounter.countFor(ID)).thenReturn(StudentCounts.ZERO);
+		var other = new DataIntegrityViolationException("other",
+				new ConstraintViolationException("check", new SQLException("check", "23514"), "delete", "a_check"));
+		willThrow(other).given(classroomRepository).flush();
+
+		// when / then
+		assertThatThrownBy(() -> classroomService.delete(ID)).isSameAs(other);
 	}
 
 	@Test

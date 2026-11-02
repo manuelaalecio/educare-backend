@@ -1,8 +1,9 @@
 package com.manuelaalecio.educare_backend.classroom.application;
 
 /**
- * How many students a class has. {@code male} and {@code female} count only the students whose gender is
- * {@code MALE} or {@code FEMALE}; students of another gender, or without one, count only in {@code total}.
+ * How many active children a class has ("students" in the names, kept for compatibility). {@code male} and
+ * {@code female} count only the children whose gender is {@code MALE} or {@code FEMALE}; children of another gender,
+ * or without one, count only in {@code total}.
  */
 public record StudentCounts(long total, long male, long female) {
 
@@ -10,10 +11,10 @@ public record StudentCounts(long total, long male, long female) {
 
 	public StudentCounts {
 		if (total < 0 || male < 0 || female < 0) {
-			throw new IllegalArgumentException("Contagens de alunos não podem ser negativas");
+			throw new IllegalArgumentException("Contagens de crianças não podem ser negativas");
 		}
 		if (male + female > total) {
-			throw new IllegalArgumentException("Meninos e meninas não podem passar do total de alunos");
+			throw new IllegalArgumentException("Meninos e meninas não podem passar do total de crianças");
 		}
 	}
 

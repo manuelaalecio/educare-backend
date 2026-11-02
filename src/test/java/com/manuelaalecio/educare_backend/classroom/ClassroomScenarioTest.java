@@ -36,9 +36,9 @@ import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 /**
- * One test per Scenario of the {@code classroom} spec, end to end through the API with a real database. The two
- * scenarios that need students are in {@link ClassroomStudentCountScenarioTest}, because classes have no students
- * until enrollment exists. Users and classes are recreated before every test.
+ * One test per Scenario of the {@code classroom} spec, end to end through the API with a real database. The
+ * scenarios that need children create them through the children API. Users, children and classes are recreated
+ * before every test.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc
@@ -74,6 +74,7 @@ class ClassroomScenarioTest {
 
 	@BeforeEach
 	void setUp() throws Exception {
+		jdbcTemplate.update("DELETE FROM children");
 		jdbcTemplate.update("DELETE FROM classrooms");
 		jdbcTemplate.update("DELETE FROM users");
 		clock.setInstant(CREATED_AT);
@@ -405,6 +406,44 @@ class ClassroomScenarioTest {
 	}
 
 	@Test
+	@DisplayName("Scenario: Turma com alunos não é excluída")
+	void shouldRejectDeletionWhenClassroomHasStudents() throws Exception {
+		// given
+		UUID id = createClassroom("Turma 1");
+		createChild("Ana", "FEMALE", id);
+		createChild("Bruno", "MALE", id);
+
+		// when
+		ResultActions result = deleteClassroom(id, adminBearer);
+
+		// then
+		result.andExpect(status().isConflict())
+				.andExpect(content().contentType(PROBLEM_JSON))
+				.andExpect(jsonPath("$.detail").value("A turma tem crianças. Tire as crianças da turma antes de excluí-la"));
+		getClassroom(id, adminBearer).andExpect(status().isOk()).andExpect(jsonPath("$.studentCount").value(2));
+	}
+
+	@Test
+	@DisplayName("Scenario: Turma só com histórico não é excluída")
+	void shouldRejectDeletionWhenClassroomHasOnlyHistory() throws Exception {
+		// given
+		UUID turma1 = createClassroom("Turma 1");
+		UUID turma2 = createClassroom("Turma 2");
+		UUID maria = createChild("Maria Clara Souza", "FEMALE", turma1);
+		moveChild(maria, "Maria Clara Souza", "FEMALE", turma2);
+
+		// when
+		ResultActions result = deleteClassroom(turma1, adminBearer);
+
+		// then
+		result.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.detail").value("A turma tem histórico de crianças e não pode ser excluída"));
+		getClassroom(turma1, adminBearer).andExpect(status().isOk()).andExpect(jsonPath("$.studentCount").value(0));
+		mockMvc.perform(get("/api/v1/children/" + maria + "/classrooms").header(HttpHeaders.AUTHORIZATION, adminBearer))
+				.andExpect(jsonPath("$[*].classroomName").value(hasItem("Turma 1")));
+	}
+
+	@Test
 	@DisplayName("Scenario: Exclusão de turma inexistente")
 	void shouldRespondNotFoundWhenDeletingMissingClassroom() throws Exception {
 		// when
@@ -430,6 +469,75 @@ class ClassroomScenarioTest {
 				.andExpect(jsonPath("$[0].studentCount").value(0))
 				.andExpect(jsonPath("$[0].maleCount").value(0))
 				.andExpect(jsonPath("$[0].femaleCount").value(0));
+	}
+
+	@Test
+	@DisplayName("Scenario: Contagens pelas crianças ativas")
+	void shouldCountOnlyActiveChildrenByGender() throws Exception {
+		// given
+		UUID turma1 = createClassroom("Turma 1");
+		UUID turma2 = createClassroom("Turma 2");
+		createChild("A", "MALE", turma1);
+		createChild("B", "MALE", turma1);
+		createChild("C", "FEMALE", turma1);
+		createChild("D", null, turma1);
+		UUID left = createChild("E", "FEMALE", turma1);
+		moveChild(left, "E", "FEMALE", turma2);
+
+		// when
+		ResultActions result = listClassrooms(adminBearer);
+
+		// then
+		result.andExpect(jsonPath("$[0].name").value("Turma 1"))
+				.andExpect(jsonPath("$[0].studentCount").value(4))
+				.andExpect(jsonPath("$[0].maleCount").value(2))
+				.andExpect(jsonPath("$[0].femaleCount").value(1))
+				.andExpect(jsonPath("$[1].name").value("Turma 2"))
+				.andExpect(jsonPath("$[1].studentCount").value(1))
+				.andExpect(jsonPath("$[1].maleCount").value(0))
+				.andExpect(jsonPath("$[1].femaleCount").value(1));
+	}
+
+	@Test
+	@DisplayName("Scenario: Aluno de outro gênero conta só no total")
+	void shouldCountChildOfOtherGenderOnlyInTotal() throws Exception {
+		// given
+		UUID id = createClassroom("Turma 1");
+		createChild("A", "MALE", id);
+		createChild("B", "FEMALE", id);
+		createChild("C", "OTHER", id);
+
+		// when
+		ResultActions result = getClassroom(id, adminBearer);
+
+		// then
+		result.andExpect(status().isOk())
+				.andExpect(jsonPath("$.studentCount").value(3))
+				.andExpect(jsonPath("$.maleCount").value(1))
+				.andExpect(jsonPath("$.femaleCount").value(1));
+	}
+
+	@Test
+	@DisplayName("Scenario: Contagem acompanha a troca de turma e a exclusão")
+	void shouldFollowMoveAndDeletionWhenCounting() throws Exception {
+		// given
+		UUID turma1 = createClassroom("Turma 1");
+		UUID turma2 = createClassroom("Turma 2");
+
+		// when / then
+		UUID ana = createChild("Ana", "FEMALE", turma1);
+		getClassroom(turma1, adminBearer).andExpect(jsonPath("$.studentCount").value(1))
+				.andExpect(jsonPath("$.femaleCount").value(1));
+
+		moveChild(ana, "Ana", "FEMALE", turma2);
+		getClassroom(turma1, adminBearer).andExpect(jsonPath("$.studentCount").value(0));
+		getClassroom(turma2, adminBearer).andExpect(jsonPath("$.studentCount").value(1))
+				.andExpect(jsonPath("$.femaleCount").value(1));
+
+		mockMvc.perform(delete("/api/v1/children/" + ana).header(HttpHeaders.AUTHORIZATION, adminBearer))
+				.andExpect(status().isNoContent());
+		getClassroom(turma1, adminBearer).andExpect(jsonPath("$.studentCount").value(0));
+		getClassroom(turma2, adminBearer).andExpect(jsonPath("$.studentCount").value(0));
 	}
 
 	// ---------- Autoria da turma ----------
@@ -489,10 +597,10 @@ class ClassroomScenarioTest {
 		result.andExpect(status().isCreated());
 	}
 
-	// ---------- Gestão de turmas restrita a COORDENADOR ----------
+	// ---------- Acesso às turmas por role ----------
 
 	@Test
-	@DisplayName("Scenario: ADMIN lista turmas")
+	@DisplayName("Scenario: COORDENADOR lista turmas")
 	void shouldListClassroomsWhenUserIsCoordinator() throws Exception {
 		// when
 		ResultActions result = listClassrooms(adminBearer);
@@ -502,17 +610,26 @@ class ClassroomScenarioTest {
 	}
 
 	@Test
-	@DisplayName("Scenario: USER não lista turmas")
-	void shouldForbidListingWhenUserIsNotCoordinator() throws Exception {
+	@DisplayName("Scenario: EDUCADOR lista e consulta turmas")
+	void shouldLetEducatorListAndReadClassrooms() throws Exception {
+		// given
+		UUID id = createClassroom("Turma 1");
+
 		// when
-		ResultActions result = listClassrooms(anaBearer);
+		ResultActions list = listClassrooms(anaBearer);
+		ResultActions read = getClassroom(id, anaBearer);
 
 		// then
-		result.andExpect(status().isForbidden()).andExpect(content().contentType(PROBLEM_JSON));
+		list.andExpect(status().isOk()).andExpect(jsonPath("$[*].name").value(hasItem("Turma 1")));
+		read.andExpect(status().isOk())
+				.andExpect(jsonPath("$.name").value("Turma 1"))
+				.andExpect(jsonPath("$.studentCount").value(0))
+				.andExpect(jsonPath("$.maleCount").value(0))
+				.andExpect(jsonPath("$.femaleCount").value(0));
 	}
 
 	@Test
-	@DisplayName("Scenario: USER não cria turma")
+	@DisplayName("Scenario: EDUCADOR não cria turma")
 	void shouldForbidCreationWhenUserIsNotCoordinator() throws Exception {
 		// when
 		ResultActions result = mockMvc.perform(withJson(post(CLASSROOMS), """
@@ -524,22 +641,33 @@ class ClassroomScenarioTest {
 	}
 
 	@Test
-	@DisplayName("Scenario: USER não renomeia nem exclui turma")
-	void shouldForbidReadingRenamingAndDeletionWhenUserIsNotCoordinator() throws Exception {
+	@DisplayName("Scenario: EDUCADOR não renomeia nem exclui turma")
+	void shouldForbidRenamingAndDeletionWhenUserIsNotCoordinator() throws Exception {
 		// given
 		UUID id = createClassroom("Turma 1");
 
 		// when
-		ResultActions read = getClassroom(id, anaBearer);
 		ResultActions rename = mockMvc.perform(withJson(put(CLASSROOMS + "/" + id), """
 				{"name": "Maternal A"}""").header(HttpHeaders.AUTHORIZATION, anaBearer));
 		ResultActions deletion = deleteClassroom(id, anaBearer);
 
 		// then
-		read.andExpect(status().isForbidden());
 		rename.andExpect(status().isForbidden());
 		deletion.andExpect(status().isForbidden());
 		assertThat(nameInDatabase(id)).isEqualTo("Turma 1");
+	}
+
+	@Test
+	@DisplayName("Scenario: Leitura sem token")
+	void shouldRespondUnauthorizedWhenListingWithoutToken() throws Exception {
+		// given
+		createClassroom("Turma 1");
+
+		// when
+		ResultActions result = mockMvc.perform(get(CLASSROOMS));
+
+		// then
+		result.andExpect(status().isUnauthorized()).andExpect(content().contentType(PROBLEM_JSON));
 	}
 
 	@Test
@@ -560,6 +688,29 @@ class ClassroomScenarioTest {
 
 	private UUID createClassroom(String name) throws Exception {
 		return idOf(postClassroom(nameBody(name)).andExpect(status().isCreated()).andReturn());
+	}
+
+	/**
+	 * Creates a child in the class through the API, with the required data and the given gender ({@code null} for
+	 * none).
+	 */
+	private UUID createChild(String name, String gender, UUID classroomId) throws Exception {
+		MvcResult result = mockMvc.perform(withJson(post("/api/v1/children"), childBody(name, gender, classroomId))
+				.header(HttpHeaders.AUTHORIZATION, adminBearer)).andExpect(status().isCreated()).andReturn();
+		return idOf(result);
+	}
+
+	private void moveChild(UUID childId, String name, String gender, UUID classroomId) throws Exception {
+		mockMvc.perform(withJson(put("/api/v1/children/" + childId), childBody(name, gender, classroomId))
+				.header(HttpHeaders.AUTHORIZATION, adminBearer)).andExpect(status().isOk());
+	}
+
+	private static String childBody(String name, String gender, UUID classroomId) {
+		return """
+				{"name": "%s", "birthDate": "2018-05-10", "cep": "01310-100", "address": "Avenida Paulista",
+				 "neighborhood": "Bela Vista", "addressNumber": "1000", "city": "São Paulo", "state": "SP",
+				 "gender": %s, "classroomId": "%s"}""".formatted(name, gender == null ? "null" : "\"" + gender + "\"",
+				classroomId);
 	}
 
 	private ResultActions postClassroom(String body) throws Exception {

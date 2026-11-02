@@ -96,11 +96,13 @@ class ClassroomTest {
 		String conflict = new ClassroomNameAlreadyInUseException().getMessage();
 		String hasStudents = new ClassroomHasStudentsException().getMessage();
 		String notFound = new ClassroomNotFoundException().getMessage();
+		String hasHistory = new ClassroomHasHistoryException().getMessage();
 
 		// then
 		assertThat(conflict).isEqualTo("Já existe uma turma com esse nome");
-		assertThat(hasStudents).isEqualTo("A turma tem alunos. Tire os alunos da turma antes de excluí-la");
+		assertThat(hasStudents).isEqualTo("A turma tem crianças. Tire as crianças da turma antes de excluí-la");
 		assertThat(notFound).isEqualTo("Turma não encontrada");
+		assertThat(hasHistory).isEqualTo("A turma tem histórico de crianças e não pode ser excluída");
 	}
 
 }

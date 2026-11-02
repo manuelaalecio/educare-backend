@@ -7,7 +7,7 @@ import com.manuelaalecio.educare_backend.classroom.domain.Classroom;
 import org.springframework.stereotype.Component;
 
 /**
- * Converts a class and its student counts into the API representation, in plain Java.
+ * Converts a class and its children counts into the API representation, in plain Java.
  */
 @Component
 public class ClassroomMapper {

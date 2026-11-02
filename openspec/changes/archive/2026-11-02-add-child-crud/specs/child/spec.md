@@ -2,12 +2,12 @@
 
 ## Purpose
 
-Manter o cadastro das crianças atendidas pela instituição: criar, consultar, listar com busca por nome, alterar e excluir crianças, com dados pessoais, endereço, documentos e dados de saúde, tratados como dados pessoais sensíveis.
+Manter o cadastro das crianças atendidas pela instituição: criar, consultar, listar com busca por nome, alterar e excluir crianças, com dados pessoais, endereço, documentos (CPF, RG e certidão de nascimento) e dados de saúde, tratados como dados pessoais sensíveis.
 
 ## ADDED Requirements
 
 ### Requirement: Dados da criança
-Uma criança SHALL ter os campos obrigatórios `name`, `birthDate`, `cep`, `address`, `neighborhood`, `addressNumber`, `city` e `state`, e os campos opcionais `addressComplement`, `birthplace`, `race`, `gender`, `cpf`, `rg`, `nationality`, `maritalStatus`, `religion`, `church`, `healthReport`, `medication` e `medicalObservation`, além de `id`, `createdAt` e `updatedAt`, gerados pelo sistema. Nas requisições de criação e alteração, o sistema SHALL recusar com `400 Bad Request` e um `ProblemDetail` que lista cada campo inválido (propriedade `errors`, com `field` e `message`), sem gravar nada, quando:
+Uma criança SHALL ter os campos obrigatórios `name`, `birthDate`, `cep`, `address`, `neighborhood`, `addressNumber`, `city` e `state`, e os campos opcionais `addressComplement`, `birthplace`, `race`, `gender`, `cpf`, `rg`, `nationality`, `maritalStatus`, `religion`, `church`, `healthReport`, `medication`, `medicalObservation` e `birthCertificateNumber` (matrícula da certidão de nascimento, com regras próprias no requirement "Certidão de nascimento"), além de `id`, `createdAt` e `updatedAt`, gerados pelo sistema. Nas requisições de criação e alteração, o sistema SHALL recusar com `400 Bad Request` e um `ProblemDetail` que lista cada campo inválido (propriedade `errors`, com `field` e `message`), sem gravar nada, quando:
 - um campo obrigatório de texto estiver ausente, vazio ou só com espaços;
 - `birthDate` estiver ausente;
 - um campo de texto passar do tamanho máximo, contado depois de remover os espaços das pontas: `name` 150, `birthplace` 150, `address` 200, `neighborhood` 100, `addressNumber` 20, `addressComplement` 100, `city` 100, `rg` 20, `nationality` 100, `religion` 100, `church` 150, `medication` 1000, `healthReport` 2000 e `medicalObservation` 2000 caracteres.
@@ -161,6 +161,49 @@ Quando informado, o `rg` SHALL ser aceito com qualquer pontuação e SHALL ser g
 - **WHEN** um cliente cria uma criança com `"rg": "..."` e os demais campos obrigatórios válidos
 - **THEN** a resposta é `400 Bad Request` e `errors` contém uma entrada para o campo `rg`; nenhuma criança é gravada
 
+### Requirement: Certidão de nascimento
+O sistema SHALL guardar, como dado opcional da criança, a matrícula da certidão de nascimento (modelo de certidão com matrícula) no campo `birthCertificateNumber`. Quando informada, a matrícula SHALL ser aceita com pontos, espaços e hífens entre os dígitos e SHALL ser gravada e devolvida só com os dígitos. Depois de tirar esses separadores, ela SHALL ter exatamente 32 dígitos; qualquer outro valor (tamanho diferente, letras ou outros caracteres) SHALL ser recusado com `400 Bad Request` e uma entrada em `errors` para o campo `birthCertificateNumber`, sem gravar nada. O sistema não confere a veracidade da matrícula (dígitos verificadores, tipo de livro, ano do registro). Vazia ou só com espaços, a matrícula fica sem valor, como os demais opcionais.
+
+Duas crianças SHALL NOT ter a mesma matrícula: a criação ou alteração que causaria isso SHALL ser recusada com `409 Conflict` e um `ProblemDetail` que não contém a matrícula, sem gravar nada. Várias crianças SHALL poder ficar sem matrícula. A matrícula SHALL aparecer nas respostas que devolvem a criança completa (com `null` quando não informada) e SHALL NOT aparecer nos itens da listagem.
+
+Nos cenários abaixo, "a matrícula M" é `10453901552013100012021000012321` (32 dígitos), e os demais campos obrigatórios da criança são válidos.
+
+#### Scenario: Matrícula com separadores é gravada só com dígitos
+- **WHEN** um cliente cria uma criança com `"birthCertificateNumber": "104539.01.55.2013.1.00012.021.0000123-21"`
+- **THEN** a resposta é `201 Created` com `"birthCertificateNumber": "10453901552013100012021000012321"`, e `GET /api/v1/children/{id}` devolve o mesmo valor
+
+#### Scenario: Matrícula com espaços entre os grupos
+- **WHEN** um cliente cria uma criança com `"birthCertificateNumber": "104539 01 55 2013 1 00012 021 0000123 21"`
+- **THEN** a resposta é `201 Created` com `"birthCertificateNumber": "10453901552013100012021000012321"`
+
+#### Scenario: Matrícula com dígitos a menos ou a mais
+- **WHEN** um cliente cria uma criança com `"birthCertificateNumber": "1045390155201310001202100001232"` (31 dígitos), e outro cliente cria uma com `"birthCertificateNumber": "104539015520131000120210000123210"` (33 dígitos)
+- **THEN** as duas respostas são `400 Bad Request` com uma entrada em `errors` para o campo `birthCertificateNumber`; nenhuma criança é gravada
+
+#### Scenario: Matrícula com letras
+- **WHEN** um cliente cria uma criança com `"birthCertificateNumber": "1045390155201310001202100001232X"`
+- **THEN** a resposta é `400 Bad Request` com uma entrada em `errors` para o campo `birthCertificateNumber`; nenhuma criança é gravada
+
+#### Scenario: Matrícula em branco
+- **WHEN** um cliente cria uma criança com `"birthCertificateNumber": "   "`
+- **THEN** a resposta é `201 Created` com `"birthCertificateNumber": null`
+
+#### Scenario: Matrícula de outra criança
+- **WHEN** já existe uma criança com a matrícula M e um cliente cria outra, ou altera uma terceira criança, com a matrícula M escrita com espaços
+- **THEN** as respostas são `409 Conflict` com `Content-Type: application/problem+json`, o corpo não contém nenhum trecho de 5 ou mais dígitos seguidos de M, e continua existindo só uma criança com a matrícula M
+
+#### Scenario: Várias crianças sem matrícula
+- **WHEN** já existe uma criança sem matrícula e um cliente cria outra sem matrícula
+- **THEN** a resposta é `201 Created` com `"birthCertificateNumber": null`
+
+#### Scenario: Alteração mantendo a própria matrícula
+- **WHEN** a criança com a matrícula M é alterada com os dados válidos e a mesma matrícula M, escrita com pontos
+- **THEN** a resposta é `200 OK` com `"birthCertificateNumber": "10453901552013100012021000012321"`
+
+#### Scenario: Alteração sem matrícula apaga a matrícula
+- **WHEN** a criança com a matrícula M é alterada com os dados obrigatórios e sem `birthCertificateNumber`
+- **THEN** a resposta é `200 OK` com `"birthCertificateNumber": null`, e outra criança pode ser criada em seguida com a matrícula M (`201 Created`)
+
 ### Requirement: Consultar criança por id
 O sistema SHALL retornar em `GET /api/v1/children/{id}` a criança com esse id, com `200 OK` e todos os seus campos. Se não existir criança com esse id, SHALL responder `404 Not Found` com um `ProblemDetail`. Se o id não for um UUID válido, SHALL responder `400 Bad Request` com um `ProblemDetail`.
 
@@ -186,7 +229,7 @@ O parâmetro opcional `name` SHALL filtrar as crianças cujo nome contém o text
 - **THEN** a resposta é `200 OK`, `content` tem `Ana` e `Bruno`, nessa ordem, e `page` tem `"size": 2`, `"number": 0`, `"totalElements": 4` e `"totalPages": 2`
 
 #### Scenario: Itens da listagem sem dados sensíveis
-- **WHEN** existe só a criança `Maria Clara Souza`, criada com CPF, endereço e dados de saúde, e um cliente envia `GET /api/v1/children`
+- **WHEN** existe só a criança `Maria Clara Souza`, criada com CPF, RG, matrícula da certidão de nascimento, endereço e dados de saúde, e um cliente envia `GET /api/v1/children`
 - **THEN** o item de `content` tem exatamente as propriedades `id`, `name`, `birthDate`, `createdAt` e `updatedAt`
 
 #### Scenario: Ordenação decrescente por data de nascimento
@@ -241,14 +284,14 @@ O sistema SHALL substituir todos os dados da criança pelos recebidos em `PUT /a
 - **THEN** a resposta é `404 Not Found` com `Content-Type: application/problem+json`, e nenhuma criança é criada
 
 ### Requirement: Excluir criança
-O sistema SHALL excluir definitivamente a criança em `DELETE /api/v1/children/{id}`, respondendo `204 No Content`; depois disso, a criança não aparece na consulta nem na listagem, e o CPF e o RG dela ficam livres para outra criança. Se não existir criança com esse id, SHALL responder `404 Not Found`.
+O sistema SHALL excluir definitivamente a criança em `DELETE /api/v1/children/{id}`, respondendo `204 No Content`; depois disso, a criança não aparece na consulta nem na listagem, e o CPF, o RG e a matrícula da certidão de nascimento dela ficam livres para outra criança. Se não existir criança com esse id, SHALL responder `404 Not Found`.
 
 #### Scenario: Criança excluída
 - **WHEN** existe a criança `Maria Clara Souza` e um `COORDENADOR` envia `DELETE /api/v1/children/{id}` com o id dela
 - **THEN** a resposta é `204 No Content`, `GET /api/v1/children/{id}` passa a responder `404 Not Found` e a listagem não contém mais essa criança
 
-#### Scenario: CPF liberado após exclusão
-- **WHEN** a criança com CPF `52998224725` é excluída e depois um cliente cria outra com `"cpf": "52998224725"`
+#### Scenario: CPF e matrícula liberados após exclusão
+- **WHEN** a criança com CPF `52998224725` e a matrícula M (requirement "Certidão de nascimento") é excluída, e depois um cliente cria outra com `"cpf": "52998224725"` e a matrícula M
 - **THEN** a criação responde `201 Created`
 
 #### Scenario: Exclusão de criança inexistente

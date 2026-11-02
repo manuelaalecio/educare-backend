@@ -4,15 +4,16 @@
 
 Motivação em proposal.md (seção Why); comportamento em `specs/child/spec.md`.
 
-Estado atual que molda a abordagem (considerando `add-record-authorship` já aplicada):
+Estado atual que molda a abordagem (`add-record-authorship` e `add-classroom-crud` já aplicadas):
 
 - O módulo `user` é o modelo de CRUD: controller com `@PreAuthorize`, `UserMapper` em Java puro, DTOs `record` com Bean Validation, enum recebido como `String` + `@Pattern` e convertido no mapper, unicidade por verificação prévia + `saveAndFlush` convertendo a `DataIntegrityViolationException`, sort restrito por `SORTABLE_PROPERTIES` e `PagedModel`.
 - `shared/error` já tem `NotFoundException` (404), `ConflictException` (409), `InvalidFieldException` (400 com uma entrada em `errors`), `InvalidSortPropertyException` e o `GlobalExceptionHandler`, que estende `ResponseEntityExceptionHandler` (JSON ilegível e UUID malformado já viram `400` em `ProblemDetail`, sem `errors`).
 - `shared/security` já exige token em toda rota fora das públicas e responde `401`/`403` em `ProblemDetail`; a role vem do banco a cada requisição.
 - `BaseEntity` já tem `createdBy`/`updatedBy`, preenchidos pela auditoria a partir do usuário autenticado; `shared/testsupport/AuthenticatedAs` permite gravar como um usuário fora de requisição.
 - `spring.data.web.pageable.max-page-size: 100` já está no `application.yaml`; `Clock` é um bean (`ClockConfiguration`), trocado por `MutableClock` nos testes.
-- Migrations até `V4__add_authorship_to_users.sql`; `ddl-auto: validate`.
-- `ArchitectureTest` já tem as regras entre módulos, que passavam trivialmente com um único módulo e passam a valer com `child`.
+- Migrations até `V7__rename_roles_to_coordinator_educator.sql`; `ddl-auto: validate`. A `V6__create_classrooms.sql` já criou a extensão `unaccent` e a função `immutable_unaccent(text)` (`IMMUTABLE`, com função e dicionário qualificados pelo schema), usada pelo `classroom` na unicidade e na ordenação dos nomes.
+- `ArchitectureTest` já tem as regras entre módulos, exercidas por `user`, `auth` e `classroom`; nesta change o `child` não depende de nenhum outro módulo.
+- Contrato da API em `openapi/educare-api.json`, verificado pelo `ApiContractScenarioTest` e pelo `ApiContractContentTest`: campos de resposta obrigatórios salvo os anotados com `@Nullable` (jspecify), erros declarados com as meta-anotações de `shared/config` (`@BadRequestResponse`, `@ForbiddenResponse`, `@NotFoundResponse`, `@ConflictResponse`) e `@ResponseStatus(HttpStatus.OK)` nas operações que devolvem corpo com `200` (o `ClassroomController` é o modelo).
 
 ## Goals / Non-Goals
 
@@ -30,7 +31,7 @@ Estado atual que molda a abordagem (considerando `add-record-authorship` já apl
 
 | Método | Rota | Corpo / parâmetros | Sucesso | Erros | Acesso |
 |---|---|---|---|---|---|
-| `POST` | `/api/v1/children` | `ChildRequest` | `201` + `Location` + `ChildResponse` | `400` validação/JSON, `409` CPF ou RG em uso | autenticado |
+| `POST` | `/api/v1/children` | `ChildRequest` | `201` + `Location` + `ChildResponse` | `400` validação/JSON, `409` CPF, RG ou matrícula em uso | autenticado |
 | `GET` | `/api/v1/children` | `name?`, `page`, `size`, `sort` | `200` + `PagedModel<ChildSummaryResponse>` | `400` sort inválido | autenticado |
 | `GET` | `/api/v1/children/{id}` | — | `200` + `ChildResponse` | `400` id malformado, `404` | autenticado |
 | `PUT` | `/api/v1/children/{id}` | `ChildRequest` | `200` + `ChildResponse` | `400`, `404`, `409` | autenticado |
@@ -39,9 +40,9 @@ Estado atual que molda a abordagem (considerando `add-record-authorship` já apl
 Todos respondem `401` sem token válido (filter chain já existente).
 
 - **Acesso**: o controller não tem `@PreAuthorize` na classe (o token já é exigido pela filter chain); só o método `delete` tem `@PreAuthorize("hasRole('COORDENADOR')")`.
-- **Um único `ChildRequest` para criar e alterar**, em vez do par `CreateChildRequest`/`UpdateChildRequest` da convenção do CLAUDE.md. O `PUT` substitui a criança inteira e aceita exatamente os mesmos campos e regras da criação; dois records idênticos com 21 campos anotados cada tenderiam a divergir numa manutenção.
+- **Um único `ChildRequest` para criar e alterar**, em vez do par `CreateChildRequest`/`UpdateChildRequest` da convenção do CLAUDE.md. O `PUT` substitui a criança inteira e aceita exatamente os mesmos campos e regras da criação; dois records idênticos com 22 campos anotados cada tenderiam a divergir numa manutenção.
   - *Alternativa*: seguir a convenção ao pé da letra. Descartada pelo risco de divergência; se um dia os corpos diferirem, o record é separado.
-- **`ChildSummaryResponse` na listagem** (`id`, `name`, `birthDate`, `createdAt`, `updatedAt`) e `ChildResponse` completo nos demais: a listagem é a tela mais acessada e não precisa de CPF, endereço nem dados de saúde (minimização, LGPD). Nenhuma das duas tem `createdBy`/`updatedBy`.
+- **`ChildSummaryResponse` na listagem** (`id`, `name`, `birthDate`, `createdAt`, `updatedAt`) e `ChildResponse` completo nos demais: a listagem é a tela mais acessada e não precisa de CPF, matrícula, endereço nem dados de saúde (minimização, LGPD). Nenhuma das duas tem `createdBy`/`updatedBy`.
 - **`PUT` e não `PATCH`**: o frontend sempre edita a ficha completa; opcional ausente apaga o valor.
 
 ### D2. Módulo `child`
@@ -53,6 +54,8 @@ child/
 │   ├── ChildMapper.java               # ChildRequest -> ChildDetails; Child -> ChildResponse / ChildSummaryResponse
 │   ├── ValidCpf.java                  # constraint Bean Validation do CPF (formato + dígitos)
 │   ├── ValidCpfValidator.java         # delega a Cpf.isValid do domínio
+│   ├── ValidBirthRegistrationNumber.java # constraint da matrícula: 32 dígitos depois dos separadores (D8)
+│   ├── ValidBirthRegistrationNumberValidator.java # delega a BirthRegistrationNumber.isValid do domínio
 │   └── dto/  ChildRequest, ChildResponse, ChildSummaryResponse
 ├── application/
 │   └── ChildService.java              # create, findById, list(name, pageable), update, delete
@@ -63,15 +66,17 @@ child/
     ├── BrazilianState.java            # enum com as 27 siglas de UF (AC … TO)
     ├── Cpf.java, Cep.java             # utilitários: normalize(String) e isValid(String), sem estado
     ├── Rg.java                        # utilitário: normalize(String) (só letras e dígitos, maiúsculas)
+    ├── BirthRegistrationNumber.java   # utilitário da matrícula: normalize e isValid (D8)
     ├── ChildRepository.java
     ├── ChildNotFoundException.java    # estende NotFoundException
     ├── CpfAlreadyInUseException.java  # estende ConflictException, mensagem sem o CPF
     ├── RgAlreadyInUseException.java   # estende ConflictException, mensagem sem o RG
+    ├── BirthCertificateAlreadyInUseException.java # estende ConflictException, mensagem sem a matrícula
     └── BirthDateInFutureException.java # estende InvalidFieldException (campo birthDate)
 ```
 
-- **Entidade `Child`**: `@Getter`, construtor protegido sem argumentos, sem setters. `Child(ChildDetails)` e `update(ChildDetails)` aplicam os dados de uma vez (a alteração é sempre completa). O domínio garante as invariantes com `IllegalArgumentException`: obrigatórios não nulos/não em branco, tamanhos máximos, `cep` e `cpf` válidos, `rg` com ao menos uma letra ou dígito. Também normaliza (strip, opcional em branco → `null`, `cep`/`cpf` só com dígitos, `rg` só com letras e dígitos em maiúsculas), de forma idempotente, para que outro chamador não grave um estado inválido. Como no `user`, isso duplica de propósito a Bean Validation do DTO, que é quem produz o `400` com `errors`. A autoria vem da `BaseEntity`, sem código no módulo.
-- **`ChildDetails`** evita construtores e métodos com 21 parâmetros posicionais e é o contrato entre `application` e `domain`; o mapper da `api` o monta a partir do `ChildRequest`.
+- **Entidade `Child`**: `@Getter`, construtor protegido sem argumentos, sem setters. `Child(ChildDetails)` e `update(ChildDetails)` aplicam os dados de uma vez (a alteração é sempre completa). O domínio garante as invariantes com `IllegalArgumentException`: obrigatórios não nulos/não em branco, tamanhos máximos, `cep` e `cpf` válidos, `rg` com ao menos uma letra ou dígito, matrícula com 32 dígitos (D8). Também normaliza (strip, opcional em branco → `null`, `cep`/`cpf`/matrícula só com dígitos, `rg` só com letras e dígitos em maiúsculas), de forma idempotente, para que outro chamador não grave um estado inválido. Como no `user`, isso duplica de propósito a Bean Validation do DTO, que é quem produz o `400` com `errors`. A autoria vem da `BaseEntity`, sem código no módulo.
+- **`ChildDetails`** evita construtores e métodos com 22 parâmetros posicionais e é o contrato entre `application` e `domain`; o mapper da `api` o monta a partir do `ChildRequest`.
 - **Enums em inglês**, nas constantes, na API e no banco: `Race` (`WHITE`, `BLACK`, `BROWN`, `YELLOW`, `INDIGENOUS`, na ordem das categorias do IBGE branca, preta, parda, amarela e indígena, registrada no Javadoc do enum), `Gender` (`MALE`, `FEMALE`, `OTHER`) e `MaritalStatus` (`SINGLE`, `MARRIED`, `STABLE_UNION`, `DIVORCED`, `WIDOWED`). O mapeamento fica em `valueOf`/`name()`, e o frontend traduz os rótulos. `BrazilianState` é exceção natural: as constantes são as siglas oficiais das UFs.
 - **DTO `ChildRequest`**:
   - o compact constructor normaliza todos os textos com strip e converte vazio em `null` antes da Bean Validation, que roda sobre o record já construído. Assim `@NotBlank`/`@NotNull` e `@Size(max = …)` avaliam o valor que será gravado (spec: tamanho contado sem os espaços das pontas);
@@ -79,7 +84,7 @@ child/
   - `birthDate`: `LocalDate` com `@NotNull`; formato inválido ou data inexistente viram erro de desserialização, respondido com `400` e entrada em `errors` para `birthDate` pela D6;
   - `cep`: `@Pattern("^\\d{5}-?\\d{3}$")`;
   - `state`: o compact constructor também o converte para maiúsculas (`Locale.ROOT`), e um `@Pattern` com as 27 siglas o valida; o mapper converte com `BrazilianState.valueOf`;
-  - `rg`: `@Pattern(".*[\\p{L}\\p{N}].*")` (ao menos uma letra ou dígito) além do `@Size(max = 20)`; a normalização fica no domínio (`Rg.normalize`), e o mapper passa o valor como veio;
+  - `rg`: `@Pattern(".*[A-Za-z0-9].*")` (ao menos uma letra ASCII ou dígito, as mesmas que o `Rg.normalize` mantém e que o `children_rg_check` aceita; com `\\p{L}`, um "é" passaria na validação e quebraria o `CHECK` com `500`) além do `@Size(max = 20)`; a normalização fica no domínio (`Rg.normalize`), e o mapper passa o valor como veio;
   - `cpf`: `@ValidCpf`, uma só constraint para formato e dígitos (uma única entrada em `errors`); nulo é válido;
   - `race`, `gender`, `maritalStatus`: `String` com `@Pattern` listando os valores, pelo mesmo motivo do `role` no `user` (com o enum direto, um valor fora da lista viraria erro de desserialização, e a mensagem seria a do Jackson, não a nossa).
 - **Data de nascimento futura**: a regra depende do relógio, então fica no `ChildService`, que compara com `LocalDate.now(clock.withZone(ZoneId.of("America/Sao_Paulo")))` e lança `BirthDateInFutureException` (`400` com entrada em `errors` para `birthDate`, pelo handler já existente de `InvalidFieldException`). O fuso é o da instituição, e não o do `Clock` (UTC), para que à noite a data de "hoje" não avance antes da hora.
@@ -96,17 +101,15 @@ child/
 
 - O controller recebe `@RequestParam(required = false) String name` e o service decide: nome nulo ou em branco → `findAll(pageable)`; senão → `searchByName(pattern, pageable)`.
 - O service monta o padrão: strip, escapa `\`, `%` e `_` com `\`, e envolve em `%…%`.
-- `ChildRepository.searchByName` é uma `@Query` JPQL: `where lower(function('unaccent', c.name)) like lower(function('unaccent', :pattern)) escape '\'`. O Spring Data deriva a count query para a paginação.
-- **Extensão `unaccent`** do PostgreSQL, criada na migration. É uma extensão *trusted* no PostgreSQL 16, como o `pgcrypto` da `V3`, então o dono do database a cria sem superusuário. Não é dependência nova da aplicação nem componente de infraestrutura; roda dentro do banco já existente.
-  - *Alternativas*: coluna normalizada (`name_search`) preenchida pela aplicação, que indexaria melhor mas duplica dado e exige normalização Unicode em Java; `ILIKE` sem acento, descartado porque "joao" não acharia "João".
-- **Sem índice**: `unaccent` não é `IMMUTABLE`, então um índice de expressão exigiria uma função wrapper. Com o volume esperado, um scan sequencial é suficiente.
+- `ChildRepository.searchByName` é uma `@Query` JPQL: `where lower(function('immutable_unaccent', c.name)) like lower(function('immutable_unaccent', :pattern)) escape '\'`. O Spring Data deriva a count query para a paginação.
+- **Função `immutable_unaccent`**, criada pela `V6` (turmas) sobre a extensão `unaccent`: é a mesma normalização da unicidade dos nomes de turma então a aplicação e o banco concordam sobre o que é "igual sem acento". Nada a criar na `V8`; não é dependência nova nem componente de infraestrutura.
+  - *Alternativas*: coluna normalizada (`name_search`) preenchida pela aplicação, que duplica dado e exige normalização Unicode em Java; `ILIKE` sem acento, descartado porque "joao" não acharia "João".
+- **Sem índice**: com o volume esperado (algumas centenas a poucos milhares de crianças), um scan sequencial é suficiente. Como a função já é `IMMUTABLE`, um índice trigram sobre `lower(immutable_unaccent(name))` pode entrar numa migration futura sem mudar o código.
 - **Sort**: `SORTABLE_PROPERTIES = {name, birthDate, createdAt}`, validado no controller como no `user`; padrão `@PageableDefault(size = 20, sort = "name")`.
 
-### D5. Migration `V5__create_children.sql`
+### D5. Migration `V8__create_children.sql`
 
 ```sql
-CREATE EXTENSION IF NOT EXISTS unaccent;
-
 -- created_by/updated_by sem FK para users (convenção de add-record-authorship) e NOT NULL:
 -- toda criança é gravada por uma requisição autenticada.
 CREATE TABLE children (
@@ -132,6 +135,7 @@ CREATE TABLE children (
     health_report        varchar(2000),
     medication           varchar(1000),
     medical_observation  varchar(2000),
+    birth_certificate_number           varchar(32),
     created_at           timestamptz   NOT NULL,
     updated_at           timestamptz   NOT NULL,
     created_by           uuid          NOT NULL,
@@ -145,7 +149,9 @@ CREATE TABLE children (
     CONSTRAINT children_race_check CHECK (race IN ('WHITE', 'BLACK', 'BROWN', 'YELLOW', 'INDIGENOUS')),
     CONSTRAINT children_gender_check CHECK (gender IN ('MALE', 'FEMALE', 'OTHER')),
     CONSTRAINT children_marital_status_check
-        CHECK (marital_status IN ('SINGLE', 'MARRIED', 'STABLE_UNION', 'DIVORCED', 'WIDOWED'))
+        CHECK (marital_status IN ('SINGLE', 'MARRIED', 'STABLE_UNION', 'DIVORCED', 'WIDOWED')),
+    CONSTRAINT children_birth_certificate_number_key UNIQUE (birth_certificate_number),
+    CONSTRAINT children_birth_certificate_number_check CHECK (birth_certificate_number ~ '^[0-9]{32}$')
 );
 ```
 
@@ -160,21 +166,40 @@ Tabela e colunas em `snake_case` (convenção do projeto); os valores das listas
 
 ### D7. Testes
 
-- Unitários: `CpfTest`, `CepTest` e `RgTest` (normalização e validação, incluindo os exemplos da spec), `ChildTest` (normalização e invariantes), `ChildServiceTest` (Mockito, com `Clock` fixo, incluindo a fronteira de fuso e o padrão escapado), `ChildMapperTest`, `ValidCpfValidatorTest`, `GlobalExceptionHandlerTest` (D6).
-- `ChildControllerTest` (`@WebMvcTest` com a segurança importada, `AuthenticatedUserLookup` mockado e tokens de `AccessTokens`): status, `errors` (inclusive data malformada), `Location`, sort inválido, `403` de `EDUCADOR` no `DELETE`, `401` sem token.
-- `ChildRepositoryTest` (`@DataJpaTest` + Testcontainers, importando `JpaAuditingConfiguration`): grava dentro de `AuthenticatedAs`, porque `created_by`/`updated_by` são `NOT NULL`; busca com acento/caixa/curingas, `children_cpf_key` e `children_rg_key` com vários `NULL`, os `CHECK`s via `JdbcTemplate`, e gravação sem usuário recusada pelo `NOT NULL`.
+- Unitários: `CpfTest`, `CepTest`, `RgTest` e `BirthRegistrationNumberTest` (normalização e validação, incluindo os exemplos da spec), `ChildTest` (normalização e invariantes, inclusive da matrícula), `ChildServiceTest` (Mockito, com `Clock` fixo, incluindo a fronteira de fuso e o padrão escapado), `ChildMapperTest`, `ValidCpfValidatorTest`, `ValidBirthRegistrationNumberValidatorTest`, `GlobalExceptionHandlerTest` (D6).
+- `ChildControllerTest` (`@WebMvcTest` com a segurança importada, `AuthenticatedUserLookup` mockado e tokens de `AccessTokens`): status, `errors` (inclusive data malformada e matrícula inválida), `Location`, sort inválido, `409` sem dados do documento, `403` de `EDUCADOR` no `DELETE`, `401` sem token.
+- `ChildRepositoryTest` (`@DataJpaTest` + Testcontainers, importando `JpaAuditingConfiguration`): grava dentro de `AuthenticatedAs`, porque `created_by`/`updated_by` são `NOT NULL`; busca com acento/caixa/curingas, `children_cpf_key`, `children_rg_key` e `children_birth_certificate_number_key` com vários `NULL`, os `CHECK`s via `JdbcTemplate`, e gravação sem usuário recusada pelo `NOT NULL`.
 - `ChildScenarioTest` (`@SpringBootTest`): um teste por Scenario da spec, com usuários de `TestUsers` e o `MutableClock`; limpa a tabela `children` no `@BeforeEach`; a autoria é lida via `JdbcTemplate`.
+- Contrato: `ApiContractContentTest` estendido com as operações de `/api/v1/children` (D9).
+
+### D8. Matrícula da certidão de nascimento
+
+- **Só o modelo com matrícula**, num campo `birthCertificateNumber` do `ChildRequest`/`ChildResponse` e numa coluna da própria `children` (dado 1:1 e opcional). Sem tipo de certidão nem campos do modelo antigo (decisão da Manuela: quem só tem a certidão antiga tira a segunda via, que já traz a matrícula).
+- **`BirthRegistrationNumber`** (domínio, sem estado, como `Cpf`):
+  - `normalize`: remove pontos, espaços e hífens; o resto fica como está (uma letra torna a matrícula inválida);
+  - `isValid`: depois de normalizar, exatamente 32 dígitos ASCII (`^[0-9]{32}$`). Sem conferência de veracidade (dígitos verificadores, tipo de livro, ano do registro), por decisão da Manuela: só o tamanho é exigido.
+- **Validação**: constraint de campo `@ValidBirthRegistrationNumber` no `ChildRequest` (nulo válido), delegando a `BirthRegistrationNumber.isValid`, que gera o `400` com `errors.birthCertificateNumber`. Como no `Cpf`, a regra se repete como invariante na `Child` (`IllegalArgumentException`).
+  - *Alternativa*: só um `@Pattern` no DTO. Descartada porque a regra é "32 dígitos depois de tirar os separadores", e um regex que aceita separadores em qualquer posição e conta os dígitos fica ilegível.
+- **Unicidade**, no mesmo padrão do CPF (D3): `existsByBirthCertificateNumber`/`existsByBirthCertificateNumberAndIdNot` na verificação prévia e, na corrida, a violação de `children_birth_certificate_number_key` no `saveAndFlush` vira `BirthCertificateAlreadyInUseException` (409, `detail` "Matrícula da certidão já cadastrada", sem o número); as demais violações continuam relançadas. Ordem das verificações prévias: CPF, RG, matrícula (a primeira que falhar responde).
+
+### D9. Contrato da API
+
+- `ChildController` segue o `ClassroomController`: `@ResponseStatus(HttpStatus.OK)` nas operações que devolvem corpo com `200` (`list`, `findById`, `update`), `@ApiResponse` com o header `Location` no `create`, e as meta-anotações conforme a D1: `@BadRequestResponse` em todas as operações com corpo ou id, `@NotFoundResponse` em `findById`/`update`/`delete`, `@ConflictResponse` em `create`/`update`, `@ForbiddenResponse` **só no método `delete`** (o único com `@PreAuthorize`). O `401` é acrescentado pelo `UnauthorizedResponseCustomizer`.
+- Todos os componentes opcionais de `ChildResponse` levam `@Nullable` (jspecify): os 14 opcionais da criança (inclusive a matrícula). Os de `ChildSummaryResponse` são todos obrigatórios.
+- `./gradlew updateApiContract` regenera `openapi/educare-api.json`, commitado junto; o `ApiContractContentTest` ganha as verificações de `/api/v1/children` (status de sucesso, campos obrigatórios e opcionais, erros de cada operação).
 
 ## Risks / Trade-offs
 
 - [Busca sem índice] Com muitos milhares de registros, a busca faz scan sequencial → Aceitável no volume esperado; se necessário, função wrapper `IMMUTABLE` e índice trigram numa migration futura.
 - [RG repetido entre estados] O mesmo número de RG pode ser emitido por estados diferentes, e sem o órgão emissor duas crianças reais podem colidir, com a segunda recebendo `409` → Caso raro no público atendido (em geral de um só estado); uma change futura adiciona a UF emissora e muda a unicidade para `(rg, rg_state)`.
 - [`errors` em erros de desserialização em toda a API] Respostas `400` de campos com tipo ou formato inválido mudam de forma em todos os endpoints → Mudança só aditiva (a propriedade `errors` aparece onde antes não havia); status e `Content-Type` continuam iguais.
-- [Dependência de outra change] Sem `add-record-authorship` aplicada, a `V5` e a entidade não batem com a `BaseEntity` → Task 1.1 confere o pré-requisito antes de começar.
-- [Exclusão definitiva] Dados excluídos não voltam → Restrita a `COORDENADOR`; quando responsáveis e matrículas existirem, as FKs dessas changes decidem o comportamento da exclusão.
+- [Matrícula sem conferência de veracidade] Uma matrícula digitada errado, mas com 32 dígitos, é aceita → Decisão de produto (só o tamanho é exigido); a unicidade ainda barra a repetição, e uma conferência dos dígitos verificadores pode entrar depois sem mudar o schema.
+- [Exclusão definitiva] Dados excluídos não voltam → Restrita a `COORDENADOR`; o vínculo com a turma (`link-child-to-classroom`) apaga o histórico junto (`ON DELETE CASCADE`), e as FKs de responsáveis e matrículas decidem o comportamento quando existirem.
+- [Criança sem turma em produção] Esta change sozinha permite criar crianças sem turma → Não vai para produção sem `link-child-to-classroom` (Migration Plan).
 
 ## Migration Plan
 
-- Pré-requisito: `add-record-authorship` implantada (migration `V4`).
-- Deploy normal: a `V5` roda no início da aplicação, cria a extensão e a tabela vazia. Nenhum dado existente é alterado.
-- Rollback: a aplicação anterior ignora a tabela `children` (o `validate` só confere as entidades que ela conhece), então basta voltar a imagem; a `V5` fica aplicada.
+- Pré-requisitos: `add-record-authorship` e `add-classroom-crud` implantadas (migrations até a `V7`).
+- **Vai para produção junto com `link-child-to-classroom`**: os dois PRs podem ser mergeados na `main` separados, mas **sem o label `build`** no PR desta change e sem tag `vX.Y.Z` entre os dois merges; a imagem é publicada (label no último PR ou tag) só quando as duas estiverem na `main`. Assim o Argo CD Image Updater nunca leva para o cluster uma versão em que dá para criar criança sem turma.
+- Deploy normal: a `V8` roda no início da aplicação e cria a tabela vazia e os índices. Nenhum dado existente é alterado; compatível com a versão em produção (só acrescenta tabela).
+- Rollback: a aplicação anterior ignora a tabela `children` (o `validate` só confere as entidades que ela conhece), então basta voltar a imagem; a `V8` fica aplicada.

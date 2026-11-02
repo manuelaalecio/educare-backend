@@ -1,0 +1,46 @@
+-- Crianças atendidas pela instituição (dados pessoais de menores: LGPD, art. 14).
+-- created_by/updated_by sem FK para users (excluir um usuário não apaga nem bloqueia a trilha)
+-- e NOT NULL: toda criança é gravada por uma requisição autenticada.
+CREATE TABLE children (
+    id                                 uuid           PRIMARY KEY,
+    name                               varchar(150)   NOT NULL,
+    birth_date                         date           NOT NULL,
+    cep                                varchar(8)     NOT NULL,
+    address                            varchar(200)   NOT NULL,
+    neighborhood                       varchar(100)   NOT NULL,
+    address_number                     varchar(20)    NOT NULL,
+    address_complement                 varchar(100),
+    city                               varchar(100)   NOT NULL,
+    state                              varchar(2)     NOT NULL,
+    birthplace                         varchar(150),
+    race                               varchar(20),
+    gender                             varchar(20),
+    cpf                                varchar(11),
+    rg                                 varchar(20),
+    nationality                        varchar(100),
+    marital_status                     varchar(20),
+    religion                           varchar(100),
+    church                             varchar(150),
+    health_report                      varchar(2000),
+    medication                         varchar(1000),
+    medical_observation                varchar(2000),
+    birth_certificate_number           varchar(32),
+    created_at                         timestamptz    NOT NULL,
+    updated_at                         timestamptz    NOT NULL,
+    created_by                         uuid           NOT NULL,
+    updated_by                         uuid           NOT NULL,
+    CONSTRAINT children_cpf_key UNIQUE (cpf),
+    CONSTRAINT children_rg_key UNIQUE (rg),
+    CONSTRAINT children_cep_check CHECK (cep ~ '^[0-9]{8}$'),
+    CONSTRAINT children_cpf_check CHECK (cpf ~ '^[0-9]{11}$'),
+    CONSTRAINT children_rg_check CHECK (rg ~ '^[0-9A-Z]+$'),
+    CONSTRAINT children_state_check CHECK (state IN ('AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA',
+        'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO')),
+    CONSTRAINT children_race_check CHECK (race IN ('WHITE', 'BLACK', 'BROWN', 'YELLOW', 'INDIGENOUS')),
+    CONSTRAINT children_gender_check CHECK (gender IN ('MALE', 'FEMALE', 'OTHER')),
+    CONSTRAINT children_marital_status_check
+        CHECK (marital_status IN ('SINGLE', 'MARRIED', 'STABLE_UNION', 'DIVORCED', 'WIDOWED')),
+    -- Matrícula da certidão de nascimento: só os 32 dígitos, sem conferir dígitos verificadores.
+    CONSTRAINT children_birth_certificate_number_key UNIQUE (birth_certificate_number),
+    CONSTRAINT children_birth_certificate_number_check CHECK (birth_certificate_number ~ '^[0-9]{32}$')
+);

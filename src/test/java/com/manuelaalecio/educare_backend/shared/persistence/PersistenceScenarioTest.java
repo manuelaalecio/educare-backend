@@ -183,8 +183,8 @@ class PersistenceScenarioTest {
 				String.class);
 
 		// then
-		assertThat(tables).containsExactlyInAnyOrder("classrooms", "flyway_schema_history", "test_audited_entity",
-				"users");
+		assertThat(tables).containsExactlyInAnyOrder("child_classrooms", "children", "classrooms",
+				"flyway_schema_history", "test_audited_entity", "users");
 	}
 
 	private Instant createdAtInDatabase(UUID id) {
