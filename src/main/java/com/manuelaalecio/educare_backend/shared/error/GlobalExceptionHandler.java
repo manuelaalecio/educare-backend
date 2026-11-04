@@ -83,9 +83,16 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 		return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
 	}
 
+	/**
+	 * The {@code 429}, with the {@code Retry-After} header when the exception knows when the client can try again.
+	 */
 	@ExceptionHandler(TooManyRequestsException.class)
-	ProblemDetail handleTooManyRequests(TooManyRequestsException ex) {
-		return ProblemDetail.forStatusAndDetail(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage());
+	ResponseEntity<ProblemDetail> handleTooManyRequests(TooManyRequestsException ex) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage());
+		ResponseEntity.BodyBuilder response = ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS);
+		ex.retryAfterSeconds()
+			.ifPresent(seconds -> response.header(HttpHeaders.RETRY_AFTER, Long.toString(seconds)));
+		return response.body(problem);
 	}
 
 	@ExceptionHandler(InvalidSortPropertyException.class)

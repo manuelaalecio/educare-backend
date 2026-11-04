@@ -7,7 +7,6 @@ import com.manuelaalecio.educare_backend.auth.api.dto.MeResponse;
 import com.manuelaalecio.educare_backend.auth.application.AuthService;
 import com.manuelaalecio.educare_backend.shared.config.BadRequestResponse;
 import com.manuelaalecio.educare_backend.shared.config.ProblemResponses;
-import com.manuelaalecio.educare_backend.shared.config.TooManyRequestsResponse;
 import com.manuelaalecio.educare_backend.shared.security.AuthenticatedUser;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -67,7 +66,6 @@ public class AuthController {
 	// runtime no-op, so that springdoc documents the 200 next to the declared errors (see login)
 	@ResponseStatus(HttpStatus.OK)
 	@BadRequestResponse
-	@TooManyRequestsResponse
 	public AccessTokenResponse changeOwnPassword(@AuthenticationPrincipal AuthenticatedUser user,
 			@Valid @RequestBody ChangeOwnPasswordRequest request) {
 		return authMapper.toResponse(

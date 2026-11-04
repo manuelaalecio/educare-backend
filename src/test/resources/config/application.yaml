@@ -1,0 +1,7 @@
+# Só no classpath de teste: classpath:/config/ tem precedência sobre classpath:/application.yaml sem escondê-lo.
+# O limite de requisições guarda a contagem num bean compartilhado pelos contextos em cache, com o relógio real;
+# a suíte rápida passaria de 120 requisições por minuto com o mesmo usuário. Os testes do limite fixam o valor
+# (educare.rate-limit.max-requests) e controlam o tempo com o MutableClock.
+educare:
+  rate-limit:
+    max-requests: 100000

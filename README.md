@@ -404,6 +404,40 @@ O front precisa voltar junto para a versão que espera `ADMIN`/`USER`.
 
 4. Confira: `curl http://<ip-publico>/actuator/health` responde `{"status":"UP"}`. O front de produção não pode apontar para a API em HTTP: o `src/env.ts` dele recusa a URL.
 
+## Medição de requisições
+
+Cada requisição à API gera uma linha de log no `INFO`, usada para medir quantas chamadas cada rota recebe e quanto tempo leva:
+
+```
+http method=GET route=/api/v1/children/{id} status=200 durationMs=12
+```
+
+- `route` é o modelo da rota, nunca o caminho real: sem ids, sem query string. Requisições que não chegam a uma rota (recusadas com `401` pela segurança, ou rota inexistente) aparecem como `route=unmatched`.
+- A linha não tem corpo, headers, token, usuário nem IP. O Actuator (`/actuator/**`, inclusive os probes) fica fora.
+- `durationMs` inclui a autenticação e o limite de requisições.
+- Para desligar sem mudar o código, suba o nível do logger: `logging.level.com.manuelaalecio.educare_backend.shared.observability=WARN` (no Deployment, a variável `LOGGING_LEVEL_COM_MANUELAALECIO_EDUCARE_BACKEND_SHARED_OBSERVABILITY=WARN`).
+
+**Roteiro da medição** (o mesmo antes e depois de uma mudança, para comparar):
+
+1. Anote o horário de início.
+2. No front de produção, faça login, abra Configurações › Turmas, vá para o Início e volte, abra Configurações › Usuários e aperte F5 10 vezes seguidas.
+3. Gere o relatório com o intervalo coberto pelo roteiro (`--since`) e guarde a saída:
+
+```bash
+kubectl logs -n educare deploy/educare-backend --since=15m \
+  | grep -o 'http method=[^ ]* route=[^ ]* status=[^ ]* durationMs=[0-9]*' \
+  | awk '{ sub("method=", "", $2); sub("route=", "", $3); sub("durationMs=", "", $5); print $2, $3, $5 }' \
+  | sort -k1,1 -k2,2 -k3,3n \
+  | awk '
+      function flush() { if (n) { i = int(0.95 * n); if (i < 0.95 * n) i++; printf "%-7s %-40s %8d %8d\n", m, r, n, d[i] } }
+      BEGIN { printf "%-7s %-40s %8s %8s\n", "METODO", "ROTA", "CHAMADAS", "P95_MS" }
+      $1 != m || $2 != r { flush(); m = $1; r = $2; n = 0 }
+      { d[++n] = $3 }
+      END { flush() }'
+```
+
+O relatório mostra, por método e rota, o número de chamadas e o p95 da duração (o valor na posição `ceil(0,95 × n)` da lista ordenada). Os logs somem quando o pod é recriado: gere o relatório antes de um novo deploy. Para ler um arquivo de log salvo, troque o `kubectl logs ...` por `cat <arquivo>`.
+
 ## Como o projeto é desenvolvido
 
 O desenvolvimento segue **Spec-Driven Development (SDD)** com [OpenSpec](https://github.com/Fission-AI/OpenSpec), assistido por IA:
