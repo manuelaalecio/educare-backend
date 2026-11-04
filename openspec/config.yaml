@@ -110,6 +110,10 @@ context: |
     token; 401 e 403 em ProblemDetail, sem indicar o motivo da recusa.
   - Autorização por role com @PreAuthorize no controller do módulo, não na filter chain
     em shared.
+  - Limite de requisições por usuário autenticado: 120 por minuto (janela deslizante, em memória,
+    configurável em educare.rate-limit). Acima disso, 429 em ProblemDetail com Retry-After, sem executar
+    a operação; recusas não contam. Rotas públicas (login, health, documentação) ficam fora. Toda operação
+    autenticada declara 429 no contrato.
   - Chave do JWT (EDUCARE_JWT_SECRET, mínimo 32 bytes) e origens de CORS
     (EDUCARE_CORS_ALLOWED_ORIGINS, URLs http/https sem caminho, * recusado) por variável
     de ambiente: obrigatórias no prod, com padrão no dev.
@@ -119,7 +123,10 @@ context: |
     segredos só por variáveis de ambiente, e no prod também as URLs.
   - Actuator: só o health (com os probes liveness/readiness) é exposto na web, em todos os
     profiles, respondendo só o status, sem componentes nem detalhes. Usado pelos probes do Kubernetes
-    (readiness e liveness, sem o banco).
+    (readiness e liveness, sem o banco). A medição de uso não muda isso: sai do log, não do Actuator.
+  - Log de medição: cada requisição gera uma linha no INFO (método, rota como modelo, status e duração
+    em ms), sem caminho real, query string, corpo, token nem usuário; o Actuator fica fora. O relatório
+    (chamadas e p95 por rota) sai dos logs do pod, com o comando do README ("Medição de requisições").
 
   ## Testes
   Estratégia completa (tipos de teste, cobertura, convenções e estrutura) no CLAUDE.md,

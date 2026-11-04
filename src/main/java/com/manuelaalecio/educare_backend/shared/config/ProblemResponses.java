@@ -1,9 +1,14 @@
 package com.manuelaalecio.educare_backend.shared.config;
 
+import java.util.List;
+
+import io.swagger.v3.oas.models.OpenAPI;
+import io.swagger.v3.oas.models.Operation;
 import io.swagger.v3.oas.models.media.Content;
 import io.swagger.v3.oas.models.media.MediaType;
 import io.swagger.v3.oas.models.media.Schema;
 import io.swagger.v3.oas.models.responses.ApiResponse;
+import io.swagger.v3.oas.models.security.SecurityRequirement;
 
 /**
  * Names shared by the {@code ProblemDetail} schema, the error meta-annotations ({@link BadRequestResponse} etc.) and
@@ -29,6 +34,16 @@ public final class ProblemResponses {
 		return new ApiResponse().description(description)
 			.content(new Content().addMediaType(MEDIA_TYPE,
 					new MediaType().schema(new Schema<>().$ref(PROBLEM_DETAIL_REF))));
+	}
+
+	/**
+	 * Whether the operation requires a token: an operation without its own {@code security} inherits the document's
+	 * one; an empty list (as in the login) makes it public.
+	 */
+	static boolean requiresToken(OpenAPI openApi, Operation operation) {
+		List<SecurityRequirement> security = operation.getSecurity() != null ? operation.getSecurity()
+				: openApi.getSecurity();
+		return security != null && !security.isEmpty();
 	}
 
 }

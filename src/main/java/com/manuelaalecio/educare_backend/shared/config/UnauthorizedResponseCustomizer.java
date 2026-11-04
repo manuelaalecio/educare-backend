@@ -1,11 +1,8 @@
 package com.manuelaalecio.educare_backend.shared.config;
 
-import java.util.List;
-
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.Operation;
 import io.swagger.v3.oas.models.PathItem;
-import io.swagger.v3.oas.models.security.SecurityRequirement;
 import org.springdoc.core.customizers.OpenApiCustomizer;
 
 /**
@@ -24,18 +21,12 @@ public class UnauthorizedResponseCustomizer implements OpenApiCustomizer {
 		}
 		for (PathItem pathItem : openApi.getPaths().values()) {
 			for (Operation operation : pathItem.readOperations()) {
-				if (requiresToken(openApi, operation) && !operation.getResponses().containsKey(UNAUTHORIZED)) {
+				if (ProblemResponses.requiresToken(openApi, operation) && !operation.getResponses().containsKey(UNAUTHORIZED)) {
 					operation.getResponses().addApiResponse(UNAUTHORIZED,
 							ProblemResponses.problemResponse("Unauthorized"));
 				}
 			}
 		}
-	}
-
-	private static boolean requiresToken(OpenAPI openApi, Operation operation) {
-		List<SecurityRequirement> security = operation.getSecurity() != null ? operation.getSecurity()
-				: openApi.getSecurity();
-		return security != null && !security.isEmpty();
 	}
 
 }

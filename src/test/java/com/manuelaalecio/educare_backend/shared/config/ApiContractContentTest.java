@@ -182,7 +182,7 @@ class ApiContractContentTest {
 	@DisplayName("Scenario: Erros de uma operação de ADMIN")
 	void shouldDeclareCoordinatorOperationProblemsWhenReadingUserCreation() {
 		// when / then
-		assertProblemResponses("/api/v1/users", "post", "400", "401", "403", "409");
+		assertProblemResponses("/api/v1/users", "post", "400", "401", "403", "409", "429");
 	}
 
 	@ParameterizedTest
@@ -211,19 +211,43 @@ class ApiContractContentTest {
 
 	@Test
 	@DisplayName("Scenario: Operação sem limite de tentativas não declara 429")
-	void shouldNotDeclareTooManyRequestsWhenReadingPasswordResetByCoordinator() {
+	void shouldNotDeclareTooManyRequestsWhenReadingPublicLogin() {
 		// when
-		Map<String, Object> responses = responses("/api/v1/users/{id}/password", "put");
+		Map<String, Object> responses = responses("/api/v1/auth/login", "post");
 
 		// then
 		assertThat(responses).doesNotContainKey("429");
 	}
 
 	@Test
+	@DisplayName("Scenario: Toda operação autenticada declara 429")
+	void shouldDeclareTooManyRequestsWhenOperationRequiresToken() {
+		// given: the operations without their own security inherit the document's bearer requirement
+		List<Object> documentSecurity = contract.read("$.security");
+		assertThat(documentSecurity).isNotEmpty();
+		Map<String, Map<String, Map<String, Object>>> paths = contract.read("$.paths");
+		Set<String> authenticated = new HashSet<>();
+		paths.forEach((path, operations) -> operations.forEach((method, operation) -> {
+			Object security = operation.get("security");
+			if (security == null || !((List<?>) security).isEmpty()) {
+				authenticated.add(method + " " + path);
+			}
+		}));
+
+		// when / then
+		assertThat(authenticated).contains("put /api/v1/users/{id}/password", "get /api/v1/children",
+				"get /api/v1/classrooms").doesNotContain("post /api/v1/auth/login");
+		for (String operation : authenticated) {
+			String[] methodAndPath = operation.split(" ", 2);
+			assertProblemResponses(methodAndPath[1], methodAndPath[0], "429");
+		}
+	}
+
+	@Test
 	@DisplayName("Scenario: Operação de qualquer usuário autenticado não declara 403")
 	void shouldDeclareUnauthorizedWithoutForbiddenWhenReadingMe() {
 		// when / then
-		assertProblemResponses("/api/v1/auth/me", "get", "401");
+		assertProblemResponses("/api/v1/auth/me", "get", "401", "429");
 		assertThat(responses("/api/v1/auth/me", "get")).doesNotContainKey("403");
 	}
 

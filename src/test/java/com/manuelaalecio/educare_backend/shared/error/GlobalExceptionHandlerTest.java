@@ -6,10 +6,12 @@ import static org.mockito.Mockito.mock;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.OptionalLong;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.core.MethodParameter;
 import org.springframework.data.core.PropertyReferenceException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
@@ -99,11 +101,33 @@ class GlobalExceptionHandlerTest {
 	}
 
 	@Test
-	void shouldReturnTooManyRequestsWithExceptionMessageAndNoErrorsWhenAttemptsAreExhausted() {
+	void shouldReturnTooManyRequestsWithoutRetryAfterWhenExceptionDoesNotKnowWhenToRetry() {
 		// when
-		ProblemDetail problem = handler.handleTooManyRequests(new SampleTooManyRequestsException());
+		ResponseEntity<ProblemDetail> response = handler.handleTooManyRequests(new SampleTooManyRequestsException());
 
 		// then
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+		assertThat(response.getHeaders().containsHeader(HttpHeaders.RETRY_AFTER)).isFalse();
+		assertTooManyRequestsProblem(response.getBody());
+	}
+
+	@Test
+	void shouldReturnTooManyRequestsWithRetryAfterWhenExceptionKnowsWhenToRetry() {
+		// when
+		ResponseEntity<ProblemDetail> response = handler.handleTooManyRequests(new SampleTooManyRequestsException() {
+			@Override
+			public OptionalLong retryAfterSeconds() {
+				return OptionalLong.of(20);
+			}
+		});
+
+		// then
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+		assertThat(response.getHeaders().get(HttpHeaders.RETRY_AFTER)).containsExactly("20");
+		assertTooManyRequestsProblem(response.getBody());
+	}
+
+	private static void assertTooManyRequestsProblem(ProblemDetail problem) {
 		assertThat(problem.getStatus()).isEqualTo(429);
 		assertThat(problem.getTitle()).isEqualTo("Too Many Requests");
 		assertThat(problem.getDetail()).isEqualTo("Tentativas demais");

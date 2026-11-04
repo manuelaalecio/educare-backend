@@ -48,6 +48,11 @@ public class OpenApiConfiguration {
 	}
 
 	@Bean
+	TooManyRequestsResponseCustomizer tooManyRequestsResponseCustomizer() {
+		return new TooManyRequestsResponseCustomizer();
+	}
+
+	@Bean
 	RequiredResponsePropertiesCustomizer requiredResponsePropertiesCustomizer(BeanFactory beanFactory) {
 		return new RequiredResponsePropertiesCustomizer(AutoConfigurationPackages.get(beanFactory));
 	}
