@@ -68,6 +68,8 @@ class RequestLogScenarioTest {
 
 	@BeforeEach
 	void setUp() throws Exception {
+		jdbcTemplate.update("DELETE FROM child_guardians");
+		jdbcTemplate.update("DELETE FROM guardians");
 		jdbcTemplate.update("DELETE FROM child_classrooms");
 		jdbcTemplate.update("DELETE FROM children");
 		jdbcTemplate.update("DELETE FROM classrooms");
@@ -216,7 +218,8 @@ class RequestLogScenarioTest {
 		String body = """
 				{"name": "%s", "birthDate": "2018-05-10", "cep": "01310-100", "address": "Avenida Paulista",
 				"neighborhood": "Bela Vista", "addressNumber": "1000", "city": "São Paulo", "state": "SP",
-				"classroomId": "%s"%s}
+				"classroomId": "%s",
+				"guardians": [{"guardian": {"name": "Maria Souza", "phone": "11912345678", "notWorking": true}, "relationship": "MOTHER"}]%s}
 				""".formatted(name, classroomId, cpfField);
 		String response = mockMvc.perform(authenticated(post(CHILDREN)).contentType(MediaType.APPLICATION_JSON)
 				.content(body))

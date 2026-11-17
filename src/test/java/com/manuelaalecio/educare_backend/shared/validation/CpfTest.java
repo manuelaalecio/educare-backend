@@ -1,4 +1,4 @@
-package com.manuelaalecio.educare_backend.child.domain;
+package com.manuelaalecio.educare_backend.shared.validation;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

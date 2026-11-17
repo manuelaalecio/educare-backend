@@ -17,7 +17,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -53,6 +55,7 @@ import tools.jackson.databind.json.JsonMapper;
 class ChildScenarioTest {
 
 	private static final String CHILDREN = "/api/v1/children";
+	private static final String GUARDIANS = "/api/v1/guardians";
 	private static final String PROBLEM_JSON = "application/problem+json";
 	private static final String MISSING_ID = "0190f4a2-0000-7000-8000-000000000000";
 	private static final Instant NOW = Instant.parse("2026-03-01T10:00:00Z");
@@ -88,6 +91,9 @@ class ChildScenarioTest {
 
 	@BeforeEach
 	void setUp() throws Exception {
+		jdbcTemplate.update("DELETE FROM child_guardians");
+		jdbcTemplate.update("DELETE FROM guardians");
+		jdbcTemplate.update("DELETE FROM child_classrooms");
 		jdbcTemplate.update("DELETE FROM children");
 		jdbcTemplate.update("DELETE FROM classrooms");
 		jdbcTemplate.update("DELETE FROM users");
@@ -175,7 +181,7 @@ class ChildScenarioTest {
 		postChild("{}").andExpect(status().isBadRequest())
 			.andExpect(content().contentType(PROBLEM_JSON))
 			.andExpect(jsonPath("$.errors[*].field").value(containsInAnyOrder("name", "birthDate", "cep", "address",
-					"neighborhood", "addressNumber", "city", "state", "classroomId")));
+					"neighborhood", "addressNumber", "city", "state", "classroomId", "guardians")));
 		assertThat(countChildren()).isZero();
 	}
 
@@ -1150,6 +1156,420 @@ class ChildScenarioTest {
 
 	// ---------- helpers ----------
 
+	// ---------- Responsáveis obrigatórios da criança ----------
+
+	@Test
+	@DisplayName("Responsáveis obrigatórios da criança — Scenario: Criança criada com responsável novo")
+	void shouldCreateChildWithNewGuardian() throws Exception {
+		// when
+		MvcResult result = postChild(body()).andExpect(status().isCreated())
+			.andExpect(jsonPath("$.guardians.length()").value(1))
+			.andExpect(jsonPath("$.guardians[0].name").value("Maria Souza"))
+			.andExpect(jsonPath("$.guardians[0].relationship").value("MOTHER"))
+			.andExpect(jsonPath("$.guardians[0].phone").value("11912345678"))
+			.andExpect(jsonPath("$.guardians[0].notWorking").value(false))
+			.andExpect(jsonPath("$.guardians[0].workplace").value("Padaria Central"))
+			.andExpect(jsonPath("$.guardians[0].workPhone").value("1133334444"))
+			.andReturn();
+
+		// then
+		UUID maria = guardianIdOf(result, "Maria Souza");
+		perform(get(GUARDIANS)).andExpect(status().isOk())
+			.andExpect(jsonPath("$.content[0].id").value(maria.toString()))
+			.andExpect(jsonPath("$.content[0].children[0].id").value(idOf(result).toString()))
+			.andExpect(jsonPath("$.content[0].children[0].relationship").value("MOTHER"));
+	}
+
+	@Test
+	@DisplayName("Responsáveis obrigatórios da criança — Scenario: Irmão vinculado à responsável já cadastrada")
+	void shouldLinkSiblingToExistingGuardian() throws Exception {
+		// given
+		UUID maria = guardianIdOf(postChild(body("name", "Ana Souza")).andExpect(status().isCreated()).andReturn(),
+				"Maria Souza");
+
+		// when
+		postChild(body("name", "Pedro Souza", "guardians", items(existingItem(maria, "MOTHER"))))
+			.andExpect(status().isCreated())
+			.andExpect(jsonPath("$.guardians[0].id").value(maria.toString()));
+
+		// then
+		assertThat(countGuardians()).isOne();
+		perform(get(GUARDIANS + "/" + maria)).andExpect(status().isOk())
+			.andExpect(jsonPath("$.children[*].name").value(contains("Ana Souza", "Pedro Souza")));
+	}
+
+	@Test
+	@DisplayName("Responsáveis obrigatórios da criança — Scenario: Criança sem responsável")
+	void shouldRejectChildWithoutGuardians() throws Exception {
+		for (String body : new String[] {body("guardians", ABSENT), body("guardians", List.of())}) {
+			postChild(body).andExpect(status().isBadRequest())
+				.andExpect(content().contentType(PROBLEM_JSON))
+				.andExpect(jsonPath("$.errors.length()").value(1))
+				.andExpect(jsonPath("$.errors[0].field").value("guardians"))
+				.andExpect(jsonPath("$.errors[0].message").value("Informe pelo menos um responsável."));
+		}
+		assertThat(countChildren()).isZero();
+	}
+
+	@Test
+	@DisplayName("Responsáveis obrigatórios da criança — Scenario: Sem responsável e com outro campo inválido")
+	void shouldListMissingGuardiansTogetherWithOtherErrors() throws Exception {
+		postChild(body("cep", "123", "guardians", ABSENT)).andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.errors[*].field").value(containsInAnyOrder("guardians", "cep")));
+	}
+
+	@Test
+	@DisplayName("Responsáveis obrigatórios da criança — Scenario: Mais de cinco responsáveis")
+	void shouldRejectMoreThanFiveGuardians() throws Exception {
+		// given
+		List<Map<String, Object>> six = items();
+		for (int i = 1; i <= 6; i++) {
+			six.add(newItem(guardianMap("name", "Responsável " + i), "OTHER"));
+		}
+
+		// when / then
+		postChild(body("guardians", six)).andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.errors.length()").value(1))
+			.andExpect(jsonPath("$.errors[0].field").value("guardians"))
+			.andExpect(jsonPath("$.errors[0].message").value("Informe no máximo 5 responsáveis."));
+		postChild(body("guardians", six.subList(0, 5))).andExpect(status().isCreated())
+			.andExpect(jsonPath("$.guardians.length()").value(5));
+	}
+
+	@Test
+	@DisplayName("Responsáveis obrigatórios da criança — Scenario: Mesmo responsável duas vezes")
+	void shouldRejectSameGuardianTwice() throws Exception {
+		// given
+		UUID maria = createMaria();
+
+		// when / then
+		postChild(body("name", "Pedro Souza", "guardians",
+				items(existingItem(maria, "MOTHER"), existingItem(maria, "OTHER"))))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.errors.length()").value(1))
+			.andExpect(jsonPath("$.errors[0].field").value("guardians"))
+			.andExpect(jsonPath("$.errors[0].message")
+				.value("O mesmo responsável não pode ser informado mais de uma vez."));
+		assertThat(countChildren()).isOne();
+	}
+
+	@Test
+	@DisplayName("Responsáveis obrigatórios da criança — Scenario: Item sem responsável ou com os dois")
+	void shouldRejectItemWithoutSourceOrWithBoth() throws Exception {
+		// given
+		UUID maria = createMaria();
+		Map<String, Object> both = newItem(guardianMap(), "FATHER");
+		both.put("guardianId", maria.toString());
+
+		// when / then
+		postChild(body("name", "Pedro Souza", "guardians", items(Map.of("relationship", "MOTHER"), both)))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.errors[*].field").value(containsInAnyOrder("guardians[0]", "guardians[1]")));
+		assertThat(countChildren()).isOne();
+		assertThat(countGuardians()).isOne();
+	}
+
+	@Test
+	@DisplayName("Responsáveis obrigatórios da criança — Scenario: Parentesco ausente e fora da lista")
+	void shouldRejectMissingAndUnknownRelationship() throws Exception {
+		// given
+		Map<String, Object> withoutRelationship = new LinkedHashMap<>();
+		withoutRelationship.put("guardian", guardianMap());
+
+		// when / then
+		postChild(body("guardians", items(withoutRelationship,
+				newItem(guardianMap("name", "João Souza"), "COUSIN"))))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.errors[*].field").value(containsInAnyOrder("guardians[0].relationship",
+					"guardians[1].relationship")));
+		assertThat(countChildren()).isZero();
+		assertThat(countGuardians()).isZero();
+	}
+
+	@Test
+	@DisplayName("Responsáveis obrigatórios da criança — Scenario: Responsável cadastrado inexistente")
+	void shouldRejectMissingExistingGuardian() throws Exception {
+		postChild(body("guardians", items(existingItem(UUID.fromString(MISSING_ID), "MOTHER"))))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.errors.length()").value(1))
+			.andExpect(jsonPath("$.errors[0].field").value("guardians[0].guardianId"))
+			.andExpect(jsonPath("$.errors[0].message").value("Responsável não encontrado"));
+		assertThat(countChildren()).isZero();
+	}
+
+	@Test
+	@DisplayName("Responsáveis obrigatórios da criança — Scenario: guardianId malformado")
+	void shouldRejectMalformedGuardianId() throws Exception {
+		postChild(body("guardians", items(Map.of("guardianId", "maria", "relationship", "MOTHER"))))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.errors[*].field").value(contains("guardians[0].guardianId")));
+	}
+
+	@Test
+	@DisplayName("Responsáveis obrigatórios da criança — Scenario: Responsável novo com dados inválidos")
+	void shouldRejectInvalidNewGuardian() throws Exception {
+		// given
+		UUID maria = createMaria();
+		Map<String, Object> invalid = new LinkedHashMap<>();
+		invalid.put("name", "");
+		invalid.put("phone", "111234");
+		invalid.put("notWorking", true);
+		invalid.put("cpf", "123.456.789-00");
+
+		// when / then
+		postChild(body("name", "Pedro Souza", "guardians",
+				items(existingItem(maria, "FATHER"), newItem(invalid, "MOTHER"))))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.errors[*].field").value(containsInAnyOrder("guardians[1].guardian.name",
+					"guardians[1].guardian.phone", "guardians[1].guardian.cpf")));
+		assertThat(countChildren()).isOne();
+		assertThat(countGuardians()).isOne();
+	}
+
+	@Test
+	@DisplayName("Responsáveis obrigatórios da criança — Scenario: Responsável novo nascido no futuro")
+	void shouldRejectNewGuardianBornInTheFuture() throws Exception {
+		postChild(body("guardians", items(newItem(guardianMap("birthDate", "2026-03-02"), "MOTHER"))))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.errors[*].field").value(contains("guardians[0].guardian.birthDate")));
+		assertThat(countChildren()).isZero();
+		assertThat(countGuardians()).isZero();
+	}
+
+	@Test
+	@DisplayName("Responsáveis obrigatórios da criança — Scenario: Responsável novo com CPF já cadastrado")
+	void shouldRejectNewGuardianWithCpfInUse() throws Exception {
+		// given
+		postChild(body("name", "Pedro Lima", "guardians",
+				items(newItem(guardianMap("name", "João Lima", "cpf", "52998224725"), "FATHER"))))
+			.andExpect(status().isCreated());
+
+		// when / then
+		postChild(body("guardians", items(newItem(guardianMap(), "MOTHER"),
+				newItem(guardianMap("name", "Joana Lima", "cpf", "529.982.247-25"), "AUNT"))))
+			.andExpect(status().isConflict())
+			.andExpect(content().contentType(PROBLEM_JSON))
+			.andExpect(jsonPath("$.detail").value("Já existe um responsável com este CPF."))
+			.andExpect(jsonPath("$.errors.length()").value(1))
+			.andExpect(jsonPath("$.errors[0].field").value("guardians[1].guardian.cpf"))
+			.andExpect(content().string(not(containsString("52998224725"))))
+			.andExpect(content().string(not(containsString("529.982.247-25"))));
+		assertThat(countChildren()).isOne();
+		assertThat(countGuardians()).isOne();
+	}
+
+	@Test
+	@DisplayName("Responsáveis obrigatórios da criança — Scenario: Dois responsáveis novos com o mesmo CPF")
+	void shouldRejectTwoNewGuardiansWithSameCpf() throws Exception {
+		postChild(body("guardians", items(newItem(guardianMap("cpf", "52998224725"), "MOTHER"),
+				newItem(guardianMap("name", "Joana Lima", "cpf", "52998224725"), "AUNT"))))
+			.andExpect(status().isConflict())
+			.andExpect(jsonPath("$.errors[*].field").value(contains("guardians[1].guardian.cpf")));
+		assertThat(countChildren()).isZero();
+		assertThat(countGuardians()).isZero();
+	}
+
+	@Test
+	@DisplayName("Responsáveis obrigatórios da criança — Scenario: Responsável novo com CPF igual ao da própria "
+			+ "criança")
+	void shouldAcceptNewGuardianWithCpfOfTheChild() throws Exception {
+		postChild(body("cpf", "52998224725", "guardians",
+				items(newItem(guardianMap("cpf", "52998224725"), "MOTHER"))))
+			.andExpect(status().isCreated());
+	}
+
+	// ---------- Substituição dos responsáveis na alteração ----------
+
+	@Test
+	@DisplayName("Substituição dos responsáveis na alteração — Scenario: Acrescentar o pai")
+	void shouldAddFatherOnUpdate() throws Exception {
+		// given
+		MvcResult ana = postChild(body("name", "Ana Souza")).andExpect(status().isCreated()).andReturn();
+		UUID maria = guardianIdOf(ana, "Maria Souza");
+
+		// when / then
+		putChild(idOf(ana), body("name", "Ana Souza", "guardians", items(existingItem(maria, "MOTHER"),
+				newItem(guardianMap("name", "João Souza"), "FATHER"))))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.guardians[*].name").value(contains("João Souza", "Maria Souza")))
+			.andExpect(jsonPath("$.guardians[*].relationship").value(contains("FATHER", "MOTHER")));
+	}
+
+	@Test
+	@DisplayName("Substituição dos responsáveis na alteração — Scenario: Remover a mãe")
+	void shouldRemoveMotherOnUpdate() throws Exception {
+		// given
+		MvcResult ana = postChild(body("name", "Ana Souza", "guardians", items(newItem(guardianMap(), "MOTHER"),
+				newItem(guardianMap("name", "João Souza"), "FATHER"))))
+			.andExpect(status().isCreated())
+			.andReturn();
+		UUID maria = guardianIdOf(ana, "Maria Souza");
+		UUID joao = guardianIdOf(ana, "João Souza");
+
+		// when / then
+		putChild(idOf(ana), body("name", "Ana Souza", "guardians", items(existingItem(joao, "FATHER"))))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.guardians[*].name").value(contains("João Souza")));
+		perform(get(GUARDIANS + "/" + maria)).andExpect(status().isOk())
+			.andExpect(jsonPath("$.children").value(empty()));
+	}
+
+	@Test
+	@DisplayName("Substituição dos responsáveis na alteração — Scenario: Trocar o parentesco")
+	void shouldChangeRelationshipOnUpdate() throws Exception {
+		// given
+		UUID maria = createMaria();
+		UUID pedro = idOf(postChild(body("name", "Pedro Lima", "guardians", items(existingItem(maria, "OTHER"))))
+			.andExpect(status().isCreated())
+			.andReturn());
+
+		// when / then
+		putChild(pedro, body("name", "Pedro Lima", "guardians", items(existingItem(maria, "STEPMOTHER"))))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.guardians[0].id").value(maria.toString()))
+			.andExpect(jsonPath("$.guardians[0].relationship").value("STEPMOTHER"));
+		perform(get(GUARDIANS + "/" + maria)).andExpect(status().isOk())
+			.andExpect(jsonPath("$.children[*].name").value(contains("Ana Souza", "Pedro Lima")))
+			.andExpect(jsonPath("$.children[*].relationship").value(contains("MOTHER", "STEPMOTHER")));
+	}
+
+	@Test
+	@DisplayName("Substituição dos responsáveis na alteração — Scenario: Remover todos os responsáveis")
+	void shouldRejectRemovingEveryGuardian() throws Exception {
+		// given
+		MvcResult ana = postChild(body("name", "Ana Souza")).andExpect(status().isCreated()).andReturn();
+
+		// when / then
+		putChild(idOf(ana), body("name", "Ana Souza", "guardians", List.of())).andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.errors.length()").value(1))
+			.andExpect(jsonPath("$.errors[0].field").value("guardians"))
+			.andExpect(jsonPath("$.errors[0].message").value("Informe pelo menos um responsável."));
+		assertThat(countGuardianLinks(idOf(ana))).isOne();
+	}
+
+	@Test
+	@DisplayName("Substituição dos responsáveis na alteração — Scenario: Criança antiga sem responsável")
+	void shouldReadOldChildWithoutGuardiansAndRequireThemOnUpdate() throws Exception {
+		// given: saved before the guardians were required
+		UUID bia = UUID.randomUUID();
+		jdbcTemplate.update("""
+				INSERT INTO children (id, name, birth_date, cep, address, neighborhood, address_number, city, state,
+				                      created_at, updated_at, created_by, updated_by)
+				VALUES (?, 'Bia Lima', DATE '2018-05-10', '01310100', 'Avenida Paulista', 'Bela Vista', '1000',
+				        'São Paulo', 'SP', now(), now(), ?, ?)
+				""", bia, anaId, anaId);
+		jdbcTemplate.update("""
+				INSERT INTO child_classrooms (id, child_id, classroom_id, start_date, created_at, updated_at,
+				                              created_by, updated_by)
+				VALUES (?, ?, ?, DATE '2026-02-01', now(), now(), ?, ?)
+				""", UUID.randomUUID(), bia, turma1, anaId, anaId);
+
+		// when / then
+		getChild(bia).andExpect(status().isOk())
+			.andExpect(jsonPath("$.guardians").isArray())
+			.andExpect(jsonPath("$.guardians").value(empty()));
+		expectFieldError(putChild(bia, body("name", "Bia Lima Souza", "guardians", ABSENT)), "guardians");
+		getChild(bia).andExpect(jsonPath("$.name").value("Bia Lima"));
+	}
+
+	@Test
+	@DisplayName("Substituição dos responsáveis na alteração — Scenario: Alteração recusada não muda os vínculos")
+	void shouldNotChangeLinksWhenUpdateIsRefused() throws Exception {
+		// given
+		MvcResult ana = postChild(body("name", "Ana Souza")).andExpect(status().isCreated()).andReturn();
+		UUID maria = guardianIdOf(ana, "Maria Souza");
+		createChild("name", "Outra Criança", "cpf", "11144477735", "guardians", items(existingItem(maria, "AUNT")));
+
+		// when / then
+		putChild(idOf(ana), body("name", "Ana Souza", "cpf", "11144477735", "guardians",
+				items(newItem(guardianMap("name", "João Souza"), "FATHER"))))
+			.andExpect(status().isConflict());
+		getChild(idOf(ana)).andExpect(jsonPath("$.guardians[*].name").value(contains("Maria Souza")));
+		assertThat(countGuardians()).isOne();
+	}
+
+	// ---------- Responsáveis nas respostas da criança ----------
+
+	@Test
+	@DisplayName("Responsáveis nas respostas da criança — Scenario: Consulta com dois responsáveis")
+	void shouldReturnTwoGuardiansByName() throws Exception {
+		// given
+		Map<String, Object> carlos = guardianMap("name", "Carlos Souza", "notWorking", true);
+		UUID ana = createChild("name", "Ana Souza", "guardians", items(newItem(guardianMap("cpf", "52998224725",
+				"rg", "12345678X", "birthDate", "1990-05-10", "maritalStatus", "MARRIED"), "MOTHER"),
+				newItem(carlos, "GRANDFATHER")));
+
+		// when / then
+		getChild(ana).andExpect(status().isOk())
+			.andExpect(jsonPath("$.guardians.length()").value(2))
+			.andExpect(jsonPath("$.guardians[0].name").value("Carlos Souza"))
+			.andExpect(jsonPath("$.guardians[0].relationship").value("GRANDFATHER"))
+			.andExpect(jsonPath("$.guardians[0].notWorking").value(true))
+			.andExpect(jsonPath("$.guardians[0].workplace").isEmpty())
+			.andExpect(jsonPath("$.guardians[0].workPhone").isEmpty())
+			.andExpect(jsonPath("$.guardians[1].name").value("Maria Souza"))
+			.andExpect(jsonPath("$.guardians[1].relationship").value("MOTHER"))
+			.andExpect(jsonPath("$.guardians[1].workplace").value("Padaria Central"))
+			.andExpect(jsonPath("$.guardians[1].workPhone").value("1133334444"))
+			.andExpect(jsonPath("$.guardians[*].cpf").value(empty()))
+			.andExpect(jsonPath("$.guardians[*].rg").value(empty()))
+			.andExpect(jsonPath("$.guardians[*].birthDate").value(empty()))
+			.andExpect(jsonPath("$.guardians[*].maritalStatus").value(empty()))
+			.andExpect(jsonPath("$.guardians[*].workAddress").value(empty()));
+	}
+
+	@Test
+	@DisplayName("Responsáveis nas respostas da criança — Scenario: Listagem de crianças sem responsáveis")
+	void shouldListChildrenWithoutGuardians() throws Exception {
+		// given
+		createChild("name", "Ana Souza");
+
+		// when / then
+		perform(get(CHILDREN)).andExpect(status().isOk())
+			.andExpect(jsonPath("$.content.length()").value(1))
+			.andExpect(jsonPath("$.content[0].guardians").doesNotExist());
+	}
+
+	// ---------- Exclusão da criança apaga os vínculos com responsáveis ----------
+
+	@Test
+	@DisplayName("Exclusão da criança apaga os vínculos com responsáveis — Scenario: Criança excluída, responsável "
+			+ "mantido")
+	void shouldDeleteLinksAndKeepGuardianWhenChildIsDeleted() throws Exception {
+		// given
+		MvcResult ana = postChild(body("name", "Ana Souza")).andExpect(status().isCreated()).andReturn();
+		UUID maria = guardianIdOf(ana, "Maria Souza");
+		createChild("name", "Pedro Souza", "guardians", items(existingItem(maria, "MOTHER")));
+
+		// when
+		perform(delete(CHILDREN + "/" + idOf(ana))).andExpect(status().isNoContent());
+
+		// then
+		perform(get(GUARDIANS + "/" + maria)).andExpect(status().isOk())
+			.andExpect(jsonPath("$.children[*].name").value(contains("Pedro Souza")));
+	}
+
+	@Test
+	@DisplayName("Exclusão da criança apaga os vínculos com responsáveis — Scenario: EDUCADOR não exclui criança com "
+			+ "responsável")
+	void shouldNotLetEducatorDeleteChildWithGuardian() throws Exception {
+		// given
+		MvcResult ana = postChild(body("name", "Ana Souza")).andExpect(status().isCreated()).andReturn();
+
+		// when / then
+		perform(anaBearer, delete(CHILDREN + "/" + idOf(ana))).andExpect(status().isForbidden());
+		assertThat(countGuardianLinks(idOf(ana))).isOne();
+	}
+
+	/**
+	 * "A responsável Maria Souza": created with "os dados da Maria" in the body of {@code Ana Souza}, as
+	 * {@code MOTHER}.
+	 */
+	private UUID createMaria() throws Exception {
+		return guardianIdOf(postChild(body("name", "Ana Souza")).andExpect(status().isCreated()).andReturn(),
+				"Maria Souza");
+	}
+
 	/**
 	 * The body of a valid child with the required data only, in "Turma 1", changed by the given pairs of field and
 	 * value ({@link #ABSENT} leaves the field out).
@@ -1165,6 +1585,7 @@ class ChildScenarioTest {
 		fields.put("city", "São Paulo");
 		fields.put("state", "SP");
 		fields.put("classroomId", turma1.toString());
+		fields.put("guardians", List.of(newItem(guardianMap(), "MOTHER")));
 		for (int i = 0; i < fieldsAndValues.length; i += 2) {
 			String field = (String) fieldsAndValues[i];
 			Object value = fieldsAndValues[i + 1];
@@ -1176,6 +1597,58 @@ class ChildScenarioTest {
 			}
 		}
 		return JSON.writeValueAsString(fields);
+	}
+
+	private static Map<String, Object> newItem(Map<String, Object> guardian, String relationship) {
+		Map<String, Object> item = new LinkedHashMap<>();
+		item.put("guardian", guardian);
+		item.put("relationship", relationship);
+		return item;
+	}
+
+	private static Map<String, Object> existingItem(UUID guardianId, String relationship) {
+		Map<String, Object> item = new LinkedHashMap<>();
+		item.put("guardianId", guardianId.toString());
+		item.put("relationship", relationship);
+		return item;
+	}
+
+	/**
+	 * "Os dados da Maria", with the given fields replaced or added.
+	 */
+	private static Map<String, Object> guardianMap(Object... fieldsAndValues) {
+		Map<String, Object> fields = new LinkedHashMap<>();
+		fields.put("name", "Maria Souza");
+		fields.put("phone", "11912345678");
+		fields.put("notWorking", false);
+		fields.put("workplace", "Padaria Central");
+		fields.put("workAddress", "Rua das Flores, 100");
+		fields.put("workPhone", "1133334444");
+		for (int i = 0; i < fieldsAndValues.length; i += 2) {
+			fields.put((String) fieldsAndValues[i], fieldsAndValues[i + 1]);
+		}
+		return fields;
+	}
+
+	@SafeVarargs
+	private static List<Map<String, Object>> items(Map<String, Object>... items) {
+		return new ArrayList<>(List.of(items));
+	}
+
+	private static UUID guardianIdOf(MvcResult childResult, String guardianName) throws Exception {
+		List<String> ids = JsonPath.read(childResult.getResponse().getContentAsString(),
+				"$.guardians[?(@.name == '" + guardianName + "')].id");
+		assertThat(ids).hasSize(1);
+		return UUID.fromString(ids.get(0));
+	}
+
+	private int countGuardians() {
+		return jdbcTemplate.queryForObject("SELECT count(*) FROM guardians", Integer.class);
+	}
+
+	private int countGuardianLinks(UUID childId) {
+		return jdbcTemplate.queryForObject("SELECT count(*) FROM child_guardians WHERE child_id = ?", Integer.class,
+				childId);
 	}
 
 	/**

@@ -1,6 +1,5 @@
-package com.manuelaalecio.educare_backend.child.api;
+package com.manuelaalecio.educare_backend.shared.validation;
 
-import com.manuelaalecio.educare_backend.child.domain.Cpf;
 import jakarta.validation.ConstraintValidator;
 import jakarta.validation.ConstraintValidatorContext;
 

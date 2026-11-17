@@ -101,6 +101,46 @@ class GlobalExceptionHandlerTest {
 	}
 
 	@Test
+	void shouldReturnConflictWithFieldErrorWhenConflictIsCausedByAField() {
+		// when
+		ProblemDetail problem = handler.handleFieldConflict(new SampleFieldConflictException());
+
+		// then
+		assertThat(problem.getStatus()).isEqualTo(409);
+		assertThat(problem.getTitle()).isEqualTo("Conflict");
+		assertThat(problem.getDetail()).isEqualTo("Já existe uma amostra com este CPF.");
+		assertThat(problem.getProperties()).containsExactly(Map.entry(GlobalExceptionHandler.ERRORS_PROPERTY,
+				List.of(Map.of("field", "cpf", "message", "Já existe uma amostra com este CPF."))));
+	}
+
+	@Test
+	void shouldReturnPrefixedFieldWhenFieldConflictIsNested() {
+		// when
+		ProblemDetail problem = handler
+			.handleFieldConflict(new SampleFieldConflictException().withFieldPrefix("guardians[1].guardian."));
+
+		// then
+		assertThat(problem.getStatus()).isEqualTo(409);
+		assertThat(problem.getProperties()).containsExactly(Map.entry(GlobalExceptionHandler.ERRORS_PROPERTY,
+				List.of(Map.of("field", "guardians[1].guardian.cpf", "message",
+						"Já existe uma amostra com este CPF."))));
+	}
+
+	@Test
+	void shouldReturnBadRequestWithPrefixedFieldWhenInvalidFieldIsNested() {
+		// when
+		ProblemDetail problem = handler
+			.handleInvalidField(new SampleInvalidFieldException().withFieldPrefix("guardians[0].guardian."));
+
+		// then
+		assertThat(problem.getStatus()).isEqualTo(400);
+		assertThat(problem.getDetail()).isEqualTo("Um ou mais campos são inválidos");
+		assertThat(problem.getProperties()).containsExactly(Map.entry(GlobalExceptionHandler.ERRORS_PROPERTY,
+				List.of(Map.of("field", "guardians[0].guardian.currentPassword", "message",
+						"Senha atual incorreta"))));
+	}
+
+	@Test
 	void shouldReturnTooManyRequestsWithoutRetryAfterWhenExceptionDoesNotKnowWhenToRetry() {
 		// when
 		ResponseEntity<ProblemDetail> response = handler.handleTooManyRequests(new SampleTooManyRequestsException());
@@ -302,6 +342,14 @@ class GlobalExceptionHandlerTest {
 
 		SampleConflictException() {
 			super("Amostra em conflito");
+		}
+
+	}
+
+	static class SampleFieldConflictException extends FieldConflictException {
+
+		SampleFieldConflictException() {
+			super("cpf", "Já existe uma amostra com este CPF.");
 		}
 
 	}

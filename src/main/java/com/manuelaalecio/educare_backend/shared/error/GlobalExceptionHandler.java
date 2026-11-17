@@ -84,6 +84,16 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 	}
 
 	/**
+	 * A conflict caused by one field: the message is both the {@code detail} and the {@code errors} entry.
+	 */
+	@ExceptionHandler(FieldConflictException.class)
+	ProblemDetail handleFieldConflict(FieldConflictException ex) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
+		problem.setProperty(ERRORS_PROPERTY, List.of(fieldError(ex.getField(), ex.getMessage())));
+		return problem;
+	}
+
+	/**
 	 * The {@code 429}, with the {@code Retry-After} header when the exception knows when the client can try again.
 	 */
 	@ExceptionHandler(TooManyRequestsException.class)

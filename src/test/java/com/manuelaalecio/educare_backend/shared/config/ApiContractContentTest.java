@@ -236,7 +236,7 @@ class ApiContractContentTest {
 
 		// when / then
 		assertThat(authenticated).contains("put /api/v1/users/{id}/password", "get /api/v1/children",
-				"get /api/v1/classrooms").doesNotContain("post /api/v1/auth/login");
+				"get /api/v1/classrooms", "get /api/v1/guardians", "put /api/v1/guardians/{id}").doesNotContain("post /api/v1/auth/login");
 		for (String operation : authenticated) {
 			String[] methodAndPath = operation.split(" ", 2);
 			assertProblemResponses(methodAndPath[1], methodAndPath[0], "429");
@@ -253,8 +253,8 @@ class ApiContractContentTest {
 
 	// ---------- children ----------
 
-	private static final String[] CHILD_REQUIRED_FIELDS = {"id", "name", "birthDate", "classroom", "cep", "address",
-			"neighborhood", "addressNumber", "city", "state", "createdAt", "updatedAt"};
+	private static final String[] CHILD_REQUIRED_FIELDS = {"id", "name", "birthDate", "classroom", "guardians", "cep",
+			"address", "neighborhood", "addressNumber", "city", "state", "createdAt", "updatedAt"};
 
 	private static final String[] CHILD_OPTIONAL_FIELDS = {"addressComplement", "birthplace", "race", "gender",
 			"cpf", "rg", "nationality", "maritalStatus", "religion", "church", "healthReport", "medication",
@@ -326,7 +326,34 @@ class ApiContractContentTest {
 		Map<String, Object> request = schema(ref);
 
 		// then
-		assertThat(required(request)).contains("classroomId");
+		assertThat(required(request)).contains("classroomId", "guardians");
+	}
+
+	@Test
+	void shouldDeclareGuardianItemsWithRequiredRelationshipWhenReadingChildRequest() {
+		// when
+		String itemRef = contract.read("$.components.schemas.ChildRequest.properties.guardians.items.$ref");
+		Map<String, Object> item = schema(itemRef);
+		String newGuardianRef = contract.read("$.components.schemas.ChildGuardianRequest.properties.guardian.$ref");
+
+		// then
+		assertThat(contract.<Integer>read("$.components.schemas.ChildRequest.properties.guardians.maxItems"))
+			.isEqualTo(5);
+		assertThat(properties(item)).containsOnlyKeys("guardianId", "guardian", "relationship");
+		assertThat(required(item)).containsExactly("relationship");
+		assertThat(required(schema(newGuardianRef))).containsExactlyInAnyOrder("name", "phone");
+	}
+
+	@Test
+	void shouldDeclareGuardianContactsWithOptionalWorkFieldsWhenReadingChildResponse() {
+		// when
+		String itemRef = contract.read("$.components.schemas.ChildResponse.properties.guardians.items.$ref");
+		Map<String, Object> item = schema(itemRef);
+
+		// then
+		assertThat(properties(item)).containsOnlyKeys("id", "name", "relationship", "phone", "notWorking",
+				"workplace", "workPhone");
+		assertThat(required(item)).containsExactlyInAnyOrder("id", "name", "relationship", "phone", "notWorking");
 	}
 
 	@Test
@@ -359,6 +386,85 @@ class ApiContractContentTest {
 		assertThat(required(item)).containsExactlyInAnyOrder("classroomId", "classroomName", "startDate");
 		assertProblemResponses("/api/v1/children/{id}/classrooms", "get", "400", "401", "404");
 		assertThat(responses("/api/v1/children/{id}/classrooms", "get")).doesNotContainKey("403");
+	}
+
+	// ---------- guardians ----------
+
+	private static final String[] GUARDIAN_REQUIRED_FIELDS = {"id", "name", "phone", "notWorking", "children",
+			"createdAt", "updatedAt"};
+
+	private static final String[] GUARDIAN_OPTIONAL_FIELDS = {"maritalStatus", "birthDate", "cpf", "rg", "workplace",
+			"workAddress", "workPhone"};
+
+	@ParameterizedTest
+	@CsvSource({"/api/v1/guardians/{id}, get", "/api/v1/guardians/{id}, put"})
+	void shouldDeclareFullGuardianWhenOperationReturnsOneGuardian(String path, String method) {
+		// when
+		Map<String, Object> schema = successSchema(path, method, "200");
+
+		// then
+		assertThat(properties(schema)).containsOnlyKeys(concat(GUARDIAN_REQUIRED_FIELDS, GUARDIAN_OPTIONAL_FIELDS));
+		assertThat(required(schema)).containsExactlyInAnyOrder(GUARDIAN_REQUIRED_FIELDS);
+		assertGuardianChildren(schema);
+	}
+
+	@Test
+	void shouldDeclareOnlySummaryFieldsWithoutDocumentsWhenReadingGuardianListing() {
+		// when
+		Map<String, Object> page = successSchema("/api/v1/guardians", "get", "200");
+		String itemRef = contract
+			.read("$.components.schemas.PagedModelGuardianSummaryResponse.properties.content.items.$ref");
+		Map<String, Object> item = schema(itemRef);
+		List<String> parameters = contract.read("$.paths['/api/v1/guardians'].get.parameters[*].name");
+
+		// then
+		assertThat(required(page)).contains("content", "page");
+		assertThat(properties(item)).containsOnlyKeys("id", "name", "phone", "children")
+			.doesNotContainKeys("cpf", "rg", "birthDate");
+		assertThat(required(item)).containsExactlyInAnyOrder("id", "name", "phone", "children");
+		assertGuardianChildren(item);
+		assertThat(parameters).contains("q");
+	}
+
+	@Test
+	void shouldDeclareGuardianProblemsWithoutForbiddenWhenReadingGuardianOperations() {
+		// when / then
+		assertProblemResponses("/api/v1/guardians", "get", "400", "401", "429");
+		assertProblemResponses("/api/v1/guardians/{id}", "get", "400", "401", "404", "429");
+		assertProblemResponses("/api/v1/guardians/{id}", "put", "400", "401", "404", "409", "429");
+		assertThat(responses("/api/v1/guardians", "get")).doesNotContainKeys("403", "404", "409");
+		assertThat(responses("/api/v1/guardians/{id}", "get")).doesNotContainKeys("403", "409");
+		assertThat(responses("/api/v1/guardians/{id}", "put")).doesNotContainKey("403");
+		assertThat(contract.<Map<String, Object>>read("$.paths['/api/v1/guardians']")).doesNotContainKey("post");
+		assertThat(contract.<Map<String, Object>>read("$.paths['/api/v1/guardians/{id}']"))
+			.doesNotContainKey("delete");
+	}
+
+	@Test
+	void shouldDeclareRequiredNameAndPhoneWhenReadingGuardianRequest() {
+		// when
+		String ref = contract.read(operationPath("/api/v1/guardians/{id}", "put")
+				+ ".requestBody.content['application/json'].schema.$ref");
+
+		// then
+		assertThat(required(schema(ref))).containsExactlyInAnyOrder("name", "phone");
+	}
+
+	private static void assertGuardianChildren(Map<String, Object> schema) {
+		@SuppressWarnings("unchecked")
+		Map<String, Object> children = (Map<String, Object>) properties(schema).get("children");
+		@SuppressWarnings("unchecked")
+		String itemsRef = (String) ((Map<String, Object>) children.get("items")).get("$ref");
+		assertThat(itemsRef).isEqualTo(SCHEMA_REF_PREFIX + "GuardianChildResponse");
+		Map<String, Object> child = schema(itemsRef);
+		assertThat(properties(child)).containsOnlyKeys("id", "name", "relationship");
+		assertThat(required(child)).containsExactlyInAnyOrder("id", "name", "relationship");
+	}
+
+	private static String[] concat(String[] first, String[] second) {
+		String[] all = java.util.Arrays.copyOf(first, first.length + second.length);
+		System.arraycopy(second, 0, all, first.length, second.length);
+		return all;
 	}
 
 	// ---------- classrooms ----------

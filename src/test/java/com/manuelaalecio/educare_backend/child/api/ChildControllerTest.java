@@ -30,6 +30,8 @@ import java.util.stream.Stream;
 
 import com.manuelaalecio.educare_backend.child.ChildDetailsBuilder;
 import com.manuelaalecio.educare_backend.child.application.ChildClassroomView;
+import com.manuelaalecio.educare_backend.child.application.ChildGuardianCommand;
+import com.manuelaalecio.educare_backend.child.application.ChildGuardianView;
 import com.manuelaalecio.educare_backend.child.application.ChildService;
 import com.manuelaalecio.educare_backend.child.application.ChildSummaryView;
 import com.manuelaalecio.educare_backend.child.application.ChildView;
@@ -40,8 +42,14 @@ import com.manuelaalecio.educare_backend.child.domain.ChildClassroom;
 import com.manuelaalecio.educare_backend.child.domain.ChildNotFoundException;
 import com.manuelaalecio.educare_backend.child.domain.ClassroomNotFoundForChildException;
 import com.manuelaalecio.educare_backend.child.domain.CpfAlreadyInUseException;
+import com.manuelaalecio.educare_backend.child.domain.GuardianNotFoundForChildException;
+import com.manuelaalecio.educare_backend.child.domain.Relationship;
 import com.manuelaalecio.educare_backend.child.domain.RgAlreadyInUseException;
 import com.manuelaalecio.educare_backend.classroom.application.ClassroomRef;
+import com.manuelaalecio.educare_backend.guardian.application.GuardianContact;
+import com.manuelaalecio.educare_backend.guardian.application.GuardianInput;
+import com.manuelaalecio.educare_backend.guardian.domain.GuardianBirthDateInFutureException;
+import com.manuelaalecio.educare_backend.guardian.domain.GuardianCpfAlreadyInUseException;
 import com.manuelaalecio.educare_backend.shared.config.ClockConfiguration;
 import com.manuelaalecio.educare_backend.shared.error.GlobalExceptionHandler;
 import com.manuelaalecio.educare_backend.shared.security.AuthenticatedUser;
@@ -90,7 +98,21 @@ class ChildControllerTest {
 	private static final String VALID_BODY = """
 			{"name": "Maria Clara Souza", "birthDate": "2018-05-10", "cep": "01310-100",
 			 "address": "Avenida Paulista", "neighborhood": "Bela Vista", "addressNumber": "1000",
-			 "city": "São Paulo", "state": "SP", "classroomId": "0190f4a2-0000-7000-8000-0000000000c1"}""";
+			 "city": "São Paulo", "state": "SP", "classroomId": "0190f4a2-0000-7000-8000-0000000000c1",
+			 "guardians": [{"guardianId": "0190f4a2-0000-7000-8000-0000000000d1", "relationship": "MOTHER"}]}""";
+	private static final String MARIA_ID_TEXT = "0190f4a2-0000-7000-8000-0000000000d1";
+	private static final UUID MARIA_ID = UUID.fromString(MARIA_ID_TEXT);
+	private static final UUID CARLOS_ID = UUID.fromString("0190f4a2-0000-7000-8000-0000000000d3");
+	private static final List<ChildGuardianCommand> GUARDIANS = List
+		.of(ChildGuardianCommand.existing(MARIA_ID, Relationship.MOTHER));
+	private static final List<ChildGuardianView> GUARDIAN_VIEWS = List.of(
+			new ChildGuardianView(new GuardianContact(CARLOS_ID, "Carlos Souza", "11966665555", true, null, null),
+					Relationship.GRANDFATHER),
+			new ChildGuardianView(new GuardianContact(MARIA_ID, "Maria Souza", "11912345678", false,
+					"Padaria Central", "1133334444"), Relationship.MOTHER));
+	private static final String MARIA_JSON = """
+			{"name": "Maria Souza", "phone": "11912345678", "notWorking": false, "workplace": "Padaria Central",
+			 "workAddress": "Rua das Flores, 100", "workPhone": "1133334444"}""";
 
 	@Autowired
 	private MockMvc mockMvc;
@@ -139,8 +161,8 @@ class ChildControllerTest {
 	@Test
 	void shouldLetEducatorCreateAndUpdateChild() throws Exception {
 		// given
-		given(childService.create(any(), any())).willReturn(view(aChild()));
-		given(childService.update(eq(ID), any(), any())).willReturn(view(aChild()));
+		given(childService.create(any(), any(), any())).willReturn(view(aChild()));
+		given(childService.update(eq(ID), any(), any(), any())).willReturn(view(aChild()));
 
 		// when / then
 		performAs(EDUCATOR_ID, postJson(VALID_BODY)).andExpect(status().isCreated());
@@ -160,7 +182,7 @@ class ChildControllerTest {
 	@Test
 	void shouldCreateChildWithLocationAndFullBodyWhenRequestIsValid() throws Exception {
 		// given
-		given(childService.create(any(), any())).willReturn(view(aCompleteChild()));
+		given(childService.create(any(), any(), any())).willReturn(view(aCompleteChild()));
 
 		// when
 		ResultActions result = perform(postJson(VALID_BODY));
@@ -186,7 +208,7 @@ class ChildControllerTest {
 	@Test
 	void shouldPassStrippedAndUpperCasedDataWhenCreating() throws Exception {
 		// given
-		given(childService.create(any(), any())).willReturn(view(aChild()));
+		given(childService.create(any(), any(), any())).willReturn(view(aChild()));
 
 		// when
 		perform(postJson(VALID_BODY.replace("\"SP\"", "\"sp\"").replace("\"Maria Clara Souza\"",
@@ -195,7 +217,7 @@ class ChildControllerTest {
 
 		// then
 		then(childService).should()
-			.create(aChild().cep("01310-100").build(), TURMA_1);
+			.create(aChild().cep("01310-100").build(), TURMA_1, GUARDIANS);
 	}
 
 	@Test
@@ -203,7 +225,7 @@ class ChildControllerTest {
 		perform(postJson("{}")).andExpect(status().isBadRequest())
 			.andExpect(content().contentType(PROBLEM_JSON))
 			.andExpect(jsonPath("$.errors[*].field").value(containsInAnyOrder("name", "birthDate", "cep", "address",
-					"neighborhood", "addressNumber", "city", "state", "classroomId")));
+					"neighborhood", "addressNumber", "city", "state", "classroomId", "guardians")));
 		then(childService).shouldHaveNoInteractions();
 	}
 
@@ -240,7 +262,7 @@ class ChildControllerTest {
 	@Test
 	void shouldRespondFieldErrorWhenBirthDateIsInFuture() throws Exception {
 		// given
-		given(childService.create(any(), any())).willThrow(new BirthDateInFutureException());
+		given(childService.create(any(), any(), any())).willThrow(new BirthDateInFutureException());
 
 		// when / then
 		perform(postJson(VALID_BODY)).andExpect(status().isBadRequest())
@@ -267,11 +289,11 @@ class ChildControllerTest {
 	void shouldRespondConflictWithoutDocumentWhenDocumentIsInUse(RuntimeException conflict, String detail)
 			throws Exception {
 		// given
-		given(childService.create(any(), any())).willThrow(conflict);
+		given(childService.create(any(), any(), any())).willThrow(conflict);
 
 		// when / then
-		perform(postJson(withField("cpf", "\"529.982.247-25\"")
-			.replace("}", ", \"birthCertificateNumber\": \"" + BIRTH_CERTIFICATE_NUMBER + "\"}")))
+		perform(postJson(withField(withField("cpf", "\"529.982.247-25\""), "birthCertificateNumber",
+				"\"" + BIRTH_CERTIFICATE_NUMBER + "\"")))
 			.andExpect(status().isConflict())
 			.andExpect(content().contentType(PROBLEM_JSON))
 			.andExpect(jsonPath("$.detail").value(detail))
@@ -283,7 +305,7 @@ class ChildControllerTest {
 	@Test
 	void shouldPassClassroomAndReturnItWhenCreating() throws Exception {
 		// given
-		given(childService.create(any(), eq(TURMA_1))).willReturn(view(aChild()));
+		given(childService.create(any(), eq(TURMA_1), eq(GUARDIANS))).willReturn(view(aChild()));
 
 		// when / then
 		perform(postJson(VALID_BODY)).andExpect(status().isCreated())
@@ -311,12 +333,192 @@ class ChildControllerTest {
 	@Test
 	void shouldRespondFieldErrorWhenClassroomDoesNotExist() throws Exception {
 		// given
-		given(childService.create(any(), any())).willThrow(new ClassroomNotFoundForChildException());
+		given(childService.create(any(), any(), any())).willThrow(new ClassroomNotFoundForChildException());
 
 		// when / then
 		perform(postJson(VALID_BODY)).andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.errors[0].field").value("classroomId"))
 			.andExpect(jsonPath("$.errors[0].message").value("Turma não encontrada"));
+	}
+
+	// ---------- guardians ----------
+
+	@Test
+	void shouldReturnGuardiansByNameWithContactOnlyWhenCreating() throws Exception {
+		// given
+		given(childService.create(any(), any(), any())).willReturn(view(aChild()));
+
+		// when / then
+		perform(postJson(VALID_BODY)).andExpect(status().isCreated())
+			.andExpect(jsonPath("$.guardians.length()").value(2))
+			.andExpect(jsonPath("$.guardians[0].id").value(CARLOS_ID.toString()))
+			.andExpect(jsonPath("$.guardians[0].name").value("Carlos Souza"))
+			.andExpect(jsonPath("$.guardians[0].relationship").value("GRANDFATHER"))
+			.andExpect(jsonPath("$.guardians[0].phone").value("11966665555"))
+			.andExpect(jsonPath("$.guardians[0].notWorking").value(true))
+			.andExpect(jsonPath("$.guardians[0].workplace").isEmpty())
+			.andExpect(jsonPath("$.guardians[0].workPhone").isEmpty())
+			.andExpect(jsonPath("$.guardians[0].length()").value(7))
+			.andExpect(jsonPath("$.guardians[1].name").value("Maria Souza"))
+			.andExpect(jsonPath("$.guardians[1].relationship").value("MOTHER"))
+			.andExpect(jsonPath("$.guardians[1].workplace").value("Padaria Central"))
+			.andExpect(jsonPath("$.guardians[1].workPhone").value("1133334444"));
+	}
+
+	@Test
+	void shouldReturnGuardiansWhenUpdatingAndFindingChild() throws Exception {
+		// given
+		given(childService.update(eq(ID), any(), any(), any())).willReturn(view(aChild()));
+		given(childService.findById(ID)).willReturn(new ChildView(stored(aChild()), TURMA_1_REF, List.of()));
+
+		// when / then
+		perform(putJson(VALID_BODY)).andExpect(status().isOk()).andExpect(jsonPath("$.guardians.length()").value(2));
+		perform(get(CHILDREN + "/{id}", ID)).andExpect(status().isOk())
+			.andExpect(jsonPath("$.guardians").isArray())
+			.andExpect(jsonPath("$.guardians").isEmpty());
+	}
+
+	@Test
+	void shouldPassExistingAndNewGuardiansInOrderWhenUpdating() throws Exception {
+		// given
+		given(childService.update(eq(ID), any(), any(), any())).willReturn(view(aChild()));
+
+		// when
+		perform(putJson(withGuardians("[{\"guardian\": " + MARIA_JSON.replace("\"notWorking\": false",
+				"\"notWorking\": true") + ", \"relationship\": \"AUNT\"}, {\"guardianId\": \"" + CARLOS_ID
+				+ "\", \"relationship\": \"GRANDFATHER\"}]")))
+			.andExpect(status().isOk());
+
+		// then
+		then(childService).should()
+			.update(ID, aChild().cep("01310-100").build(), TURMA_1,
+					List.of(ChildGuardianCommand.newGuardian(new GuardianInput("Maria Souza", null, null, null, null,
+							"11912345678", true, null, null, null), Relationship.AUNT),
+							ChildGuardianCommand.existing(CARLOS_ID, Relationship.GRANDFATHER)));
+	}
+
+	static Stream<Arguments> invalidGuardianLists() {
+		String existing = "{\"guardianId\": \"" + MARIA_ID_TEXT + "\", \"relationship\": \"MOTHER\"}";
+		String newOne = "{\"guardian\": " + MARIA_JSON + ", \"relationship\": \"OTHER\"}";
+		return Stream.of(
+				Arguments.of("ausente", null, "Informe pelo menos um responsável."),
+				Arguments.of("null", "null", "Informe pelo menos um responsável."),
+				Arguments.of("vazio", "[]", "Informe pelo menos um responsável."),
+				Arguments.of("seis itens", "[" + String.join(", ", java.util.Collections.nCopies(6, newOne)) + "]",
+						"Informe no máximo 5 responsáveis."),
+				Arguments.of("id repetido", "[" + existing + ", " + existing.replace("MOTHER", "OTHER") + "]",
+						"O mesmo responsável não pode ser informado mais de uma vez."));
+	}
+
+	@ParameterizedTest(name = "{0}")
+	@MethodSource("invalidGuardianLists")
+	void shouldRespondErrorOnGuardiansWhenListIsInvalid(String name, String guardiansJson, String message)
+			throws Exception {
+		String body = guardiansJson == null ? VALID_BODY.substring(0, VALID_BODY.indexOf(",\n \"guardians\""))
+				+ "}" : withGuardians(guardiansJson);
+		perform(postJson(body)).andExpect(status().isBadRequest())
+			.andExpect(content().contentType(PROBLEM_JSON))
+			.andExpect(jsonPath("$.errors.length()").value(1))
+			.andExpect(jsonPath("$.errors[0].field").value("guardians"))
+			.andExpect(jsonPath("$.errors[0].message").value(message));
+		then(childService).shouldHaveNoInteractions();
+	}
+
+	@Test
+	void shouldListGuardiansTogetherWithOtherFieldsWhenBothAreInvalid() throws Exception {
+		perform(postJson(withField(withGuardians("[]"), "cep", "\"123\""))).andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.errors[*].field").value(containsInAnyOrder("guardians", "cep")));
+	}
+
+	@Test
+	void shouldPointToItemWhenItIsNullOrHasNoneOrBothSources() throws Exception {
+		perform(postJson(withGuardians("[null, {\"relationship\": \"MOTHER\"}, {\"guardianId\": \"" + MARIA_ID
+				+ "\", \"guardian\": " + MARIA_JSON + ", \"relationship\": \"FATHER\"}]")))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.errors[*].field").value(containsInAnyOrder("guardians[0]", "guardians[1]",
+					"guardians[2]")));
+		then(childService).shouldHaveNoInteractions();
+	}
+
+	@Test
+	void shouldPointToRelationshipWhenItIsMissingOrNotInList() throws Exception {
+		perform(postJson(withGuardians("[{\"guardian\": " + MARIA_JSON + "}, {\"guardian\": "
+				+ MARIA_JSON.replace("Maria Souza", "João Souza") + ", \"relationship\": \"COUSIN\"}]")))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.errors[*].field").value(containsInAnyOrder("guardians[0].relationship",
+					"guardians[1].relationship")));
+		then(childService).shouldHaveNoInteractions();
+	}
+
+	@Test
+	void shouldPointToGuardianIdWhenItIsMalformed() throws Exception {
+		perform(postJson(withGuardians("[{\"guardianId\": \"maria\", \"relationship\": \"MOTHER\"}]")))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.errors.length()").value(1))
+			.andExpect(jsonPath("$.errors[0].field").value("guardians[0].guardianId"));
+		then(childService).shouldHaveNoInteractions();
+	}
+
+	@Test
+	void shouldPointToGuardianIdWhenGuardianDoesNotExist() throws Exception {
+		// given
+		given(childService.create(any(), any(), any()))
+			.willThrow(new GuardianNotFoundForChildException("guardians[0].guardianId"));
+
+		// when / then
+		perform(postJson(VALID_BODY)).andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.errors.length()").value(1))
+			.andExpect(jsonPath("$.errors[0].field").value("guardians[0].guardianId"))
+			.andExpect(jsonPath("$.errors[0].message").value("Responsável não encontrado"));
+	}
+
+	@Test
+	void shouldPointToNewGuardianFieldsWithItemPathWhenTheyAreInvalid() throws Exception {
+		perform(postJson(withGuardians("[{\"guardianId\": \"" + MARIA_ID + "\", \"relationship\": \"FATHER\"}, "
+				+ "{\"guardian\": {\"name\": \"\", \"phone\": \"111234\", \"notWorking\": true, "
+				+ "\"cpf\": \"123.456.789-00\", \"birthDate\": \"10/05/1990\"}, \"relationship\": \"MOTHER\"}]")))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.errors.length()").value(1))
+			.andExpect(jsonPath("$.errors[0].field").value("guardians[1].guardian.birthDate"));
+		perform(postJson(withGuardians("[{\"guardianId\": \"" + MARIA_ID + "\", \"relationship\": \"FATHER\"}, "
+				+ "{\"guardian\": {\"name\": \"\", \"phone\": \"111234\", \"notWorking\": true, "
+				+ "\"cpf\": \"123.456.789-00\"}, \"relationship\": \"MOTHER\"}, "
+				+ "{\"guardian\": {\"name\": \"Ana\", \"phone\": \"11912345678\"}, \"relationship\": \"AUNT\"}]")))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.errors[*].field").value(containsInAnyOrder("guardians[1].guardian.name",
+					"guardians[1].guardian.phone", "guardians[1].guardian.cpf", "guardians[2].guardian.workplace",
+					"guardians[2].guardian.workAddress", "guardians[2].guardian.workPhone")));
+		then(childService).shouldHaveNoInteractions();
+	}
+
+	@Test
+	void shouldRespondFieldErrorOnItemWhenNewGuardianBirthDateIsInFuture() throws Exception {
+		// given
+		given(childService.create(any(), any(), any()))
+			.willThrow(new GuardianBirthDateInFutureException().withFieldPrefix("guardians[0].guardian."));
+
+		// when / then
+		perform(postJson(VALID_BODY)).andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.errors[0].field").value("guardians[0].guardian.birthDate"));
+	}
+
+	@Test
+	void shouldRespondConflictOnItemWithoutCpfWhenNewGuardianCpfIsInUse() throws Exception {
+		// given
+		given(childService.create(any(), any(), any()))
+			.willThrow(new GuardianCpfAlreadyInUseException().withFieldPrefix("guardians[1].guardian."));
+
+		// when / then
+		perform(postJson(withGuardians("[{\"guardian\": " + MARIA_JSON + ", \"relationship\": \"MOTHER\"}, "
+				+ "{\"guardian\": " + MARIA_JSON.replace("}", ", \"cpf\": \"529.982.247-25\"}")
+				+ ", \"relationship\": \"AUNT\"}]")))
+			.andExpect(status().isConflict())
+			.andExpect(content().contentType(PROBLEM_JSON))
+			.andExpect(jsonPath("$.detail").value("Já existe um responsável com este CPF."))
+			.andExpect(jsonPath("$.errors.length()").value(1))
+			.andExpect(jsonPath("$.errors[0].field").value("guardians[1].guardian.cpf"))
+			.andExpect(content().string(not(containsString("52998224725"))))
+			.andExpect(content().string(not(containsString("529.982.247-25"))));
 	}
 
 	// ---------- list ----------
@@ -344,6 +546,7 @@ class ChildControllerTest {
 			.andExpect(jsonPath("$.content[0].classroom.name").value("Turma 1"))
 			.andExpect(jsonPath("$.content[0].classroom.length()").value(2))
 			.andExpect(jsonPath("$.content[0].length()").value(6))
+			.andExpect(jsonPath("$.content[0].guardians").doesNotExist())
 			.andExpect(jsonPath("$.page.size").value(20))
 			.andExpect(jsonPath("$.page.number").value(0))
 			.andExpect(jsonPath("$.page.totalElements").value(1))
@@ -469,7 +672,7 @@ class ChildControllerTest {
 	@Test
 	void shouldReturnUpdatedChildWhenUpdateIsValid() throws Exception {
 		// given
-		given(childService.update(eq(ID), any(), any())).willReturn(view(aChild().neighborhood("Consolação")));
+		given(childService.update(eq(ID), any(), any(), any())).willReturn(view(aChild().neighborhood("Consolação")));
 
 		// when / then
 		perform(putJson(VALID_BODY)).andExpect(status().isOk())
@@ -487,7 +690,7 @@ class ChildControllerTest {
 	@Test
 	void shouldRespondNotFoundWhenUpdatingMissingChild() throws Exception {
 		// given
-		given(childService.update(eq(ID), any(), any())).willThrow(new ChildNotFoundException());
+		given(childService.update(eq(ID), any(), any(), any())).willThrow(new ChildNotFoundException());
 
 		// when / then
 		perform(putJson(VALID_BODY)).andExpect(status().isNotFound());
@@ -496,7 +699,7 @@ class ChildControllerTest {
 	@Test
 	void shouldRespondConflictWhenUpdateUsesCpfOfAnotherChild() throws Exception {
 		// given
-		given(childService.update(eq(ID), any(), any())).willThrow(new CpfAlreadyInUseException());
+		given(childService.update(eq(ID), any(), any(), any())).willThrow(new CpfAlreadyInUseException());
 
 		// when / then
 		perform(putJson(withField("cpf", "\"52998224725\""))).andExpect(status().isConflict())
@@ -539,11 +742,19 @@ class ChildControllerTest {
 	 * The valid body with one more field (or the replacement of an existing one, since the later key wins).
 	 */
 	private static String withField(String field, String jsonValue) {
-		return VALID_BODY.substring(0, VALID_BODY.lastIndexOf('}')) + ", \"" + field + "\": " + jsonValue + "}";
+		return withField(VALID_BODY, field, jsonValue);
+	}
+
+	private static String withField(String body, String field, String jsonValue) {
+		return body.substring(0, body.lastIndexOf('}')) + ", \"" + field + "\": " + jsonValue + "}";
+	}
+
+	private static String withGuardians(String guardiansJson) {
+		return withField("guardians", guardiansJson);
 	}
 
 	private static ChildView view(ChildDetailsBuilder details) {
-		return new ChildView(stored(details), TURMA_1_REF);
+		return new ChildView(stored(details), TURMA_1_REF, GUARDIAN_VIEWS);
 	}
 
 	private static Child stored(ChildDetailsBuilder details) {

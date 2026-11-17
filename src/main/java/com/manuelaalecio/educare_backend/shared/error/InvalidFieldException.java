@@ -17,4 +17,14 @@ public abstract class InvalidFieldException extends RuntimeException {
 		this.field = field;
 	}
 
+	/**
+	 * The same error anchored inside an item of the body: for an error on {@code cpf}, the prefix
+	 * {@code guardians[1].guardian.} gives the field {@code guardians[1].guardian.cpf}, with the same message.
+	 *
+	 * @return a new exception, with this one as its cause
+	 */
+	public InvalidFieldException withFieldPrefix(String prefix) {
+		return new NestedInvalidFieldException(prefix + field, getMessage(), this);
+	}
+
 }

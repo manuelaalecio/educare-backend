@@ -78,6 +78,60 @@
         ],
         "type" : "object"
       },
+      "ChildGuardianRequest" : {
+        "properties" : {
+          "guardian" : {
+            "$ref" : "#/components/schemas/NewGuardianRequest"
+          },
+          "guardianId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "relationship" : {
+            "minLength" : 1,
+            "pattern" : "MOTHER|FATHER|GRANDMOTHER|GRANDFATHER|AUNT|UNCLE|SISTER|BROTHER|STEPMOTHER|STEPFATHER|LEGAL_GUARDIAN|OTHER",
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "relationship"
+        ],
+        "type" : "object"
+      },
+      "ChildGuardianResponse" : {
+        "properties" : {
+          "id" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "notWorking" : {
+            "type" : "boolean"
+          },
+          "phone" : {
+            "type" : "string"
+          },
+          "relationship" : {
+            "type" : "string"
+          },
+          "workPhone" : {
+            "type" : "string"
+          },
+          "workplace" : {
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "id",
+          "name",
+          "notWorking",
+          "phone",
+          "relationship"
+        ],
+        "type" : "object"
+      },
       "ChildRequest" : {
         "properties" : {
           "address" : {
@@ -132,6 +186,14 @@
           "gender" : {
             "pattern" : "MALE|FEMALE|OTHER",
             "type" : "string"
+          },
+          "guardians" : {
+            "items" : {
+              "$ref" : "#/components/schemas/ChildGuardianRequest"
+            },
+            "maxItems" : 5,
+            "minItems" : 0,
+            "type" : "array"
           },
           "healthReport" : {
             "maxLength" : 2000,
@@ -195,6 +257,7 @@
           "cep",
           "city",
           "classroomId",
+          "guardians",
           "name",
           "neighborhood",
           "state"
@@ -243,6 +306,12 @@
           },
           "gender" : {
             "type" : "string"
+          },
+          "guardians" : {
+            "items" : {
+              "$ref" : "#/components/schemas/ChildGuardianResponse"
+            },
+            "type" : "array"
           },
           "healthReport" : {
             "type" : "string"
@@ -294,6 +363,7 @@
           "city",
           "classroom",
           "createdAt",
+          "guardians",
           "id",
           "name",
           "neighborhood",
@@ -452,6 +522,169 @@
         ],
         "type" : "object"
       },
+      "GuardianChildResponse" : {
+        "properties" : {
+          "id" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "relationship" : {
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "id",
+          "name",
+          "relationship"
+        ],
+        "type" : "object"
+      },
+      "GuardianRequest" : {
+        "properties" : {
+          "birthDate" : {
+            "format" : "date",
+            "type" : "string"
+          },
+          "cpf" : {
+            "type" : "string"
+          },
+          "maritalStatus" : {
+            "pattern" : "SINGLE|MARRIED|STABLE_UNION|DIVORCED|WIDOWED",
+            "type" : "string"
+          },
+          "name" : {
+            "maxLength" : 150,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "notWorking" : {
+            "type" : "boolean"
+          },
+          "phone" : {
+            "minLength" : 1,
+            "pattern" : "^[0-9]{10,11}$",
+            "type" : "string"
+          },
+          "rg" : {
+            "maxLength" : 20,
+            "minLength" : 0,
+            "pattern" : ".*[A-Za-z0-9].*",
+            "type" : "string"
+          },
+          "workAddress" : {
+            "maxLength" : 200,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "workPhone" : {
+            "pattern" : "^[0-9]{10,11}$",
+            "type" : "string"
+          },
+          "workplace" : {
+            "maxLength" : 150,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "name",
+          "phone"
+        ],
+        "type" : "object"
+      },
+      "GuardianResponse" : {
+        "properties" : {
+          "birthDate" : {
+            "format" : "date",
+            "type" : "string"
+          },
+          "children" : {
+            "items" : {
+              "$ref" : "#/components/schemas/GuardianChildResponse"
+            },
+            "type" : "array"
+          },
+          "cpf" : {
+            "type" : "string"
+          },
+          "createdAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "id" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "maritalStatus" : {
+            "type" : "string"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "notWorking" : {
+            "type" : "boolean"
+          },
+          "phone" : {
+            "type" : "string"
+          },
+          "rg" : {
+            "type" : "string"
+          },
+          "updatedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "workAddress" : {
+            "type" : "string"
+          },
+          "workPhone" : {
+            "type" : "string"
+          },
+          "workplace" : {
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "children",
+          "createdAt",
+          "id",
+          "name",
+          "notWorking",
+          "phone",
+          "updatedAt"
+        ],
+        "type" : "object"
+      },
+      "GuardianSummaryResponse" : {
+        "properties" : {
+          "children" : {
+            "items" : {
+              "$ref" : "#/components/schemas/GuardianChildResponse"
+            },
+            "type" : "array"
+          },
+          "id" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "phone" : {
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "children",
+          "id",
+          "name",
+          "phone"
+        ],
+        "type" : "object"
+      },
       "LoginRequest" : {
         "properties" : {
           "login" : {
@@ -502,6 +735,59 @@
           "name",
           "role",
           "updatedAt"
+        ],
+        "type" : "object"
+      },
+      "NewGuardianRequest" : {
+        "properties" : {
+          "birthDate" : {
+            "format" : "date",
+            "type" : "string"
+          },
+          "cpf" : {
+            "type" : "string"
+          },
+          "maritalStatus" : {
+            "pattern" : "SINGLE|MARRIED|STABLE_UNION|DIVORCED|WIDOWED",
+            "type" : "string"
+          },
+          "name" : {
+            "maxLength" : 150,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "notWorking" : {
+            "type" : "boolean"
+          },
+          "phone" : {
+            "minLength" : 1,
+            "pattern" : "^[0-9]{10,11}$",
+            "type" : "string"
+          },
+          "rg" : {
+            "maxLength" : 20,
+            "minLength" : 0,
+            "pattern" : ".*[A-Za-z0-9].*",
+            "type" : "string"
+          },
+          "workAddress" : {
+            "maxLength" : 200,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "workPhone" : {
+            "pattern" : "^[0-9]{10,11}$",
+            "type" : "string"
+          },
+          "workplace" : {
+            "maxLength" : 150,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "name",
+          "phone"
         ],
         "type" : "object"
       },
@@ -558,6 +844,24 @@
           "content" : {
             "items" : {
               "$ref" : "#/components/schemas/ChildSummaryResponse"
+            },
+            "type" : "array"
+          },
+          "page" : {
+            "$ref" : "#/components/schemas/PageMetadata"
+          }
+        },
+        "required" : [
+          "content",
+          "page"
+        ],
+        "type" : "object"
+      },
+      "PagedModelGuardianSummaryResponse" : {
+        "properties" : {
+          "content" : {
+            "items" : {
+              "$ref" : "#/components/schemas/GuardianSummaryResponse"
             },
             "type" : "array"
           },
@@ -1089,7 +1393,7 @@
         ]
       },
       "get" : {
-        "operationId" : "findById_2",
+        "operationId" : "findById_3",
         "parameters" : [
           {
             "in" : "path",
@@ -1158,7 +1462,7 @@
         ]
       },
       "put" : {
-        "operationId" : "update_1",
+        "operationId" : "update_2",
         "parameters" : [
           {
             "in" : "path",
@@ -1536,7 +1840,7 @@
         ]
       },
       "get" : {
-        "operationId" : "findById_1",
+        "operationId" : "findById_2",
         "parameters" : [
           {
             "in" : "path",
@@ -1701,6 +2005,234 @@
         },
         "tags" : [
           "classroom-controller"
+        ]
+      }
+    },
+    "/api/v1/guardians" : {
+      "get" : {
+        "operationId" : "list_3",
+        "parameters" : [
+          {
+            "in" : "query",
+            "name" : "q",
+            "required" : false,
+            "schema" : {
+              "type" : "string"
+            }
+          },
+          {
+            "in" : "query",
+            "name" : "pageable",
+            "required" : true,
+            "schema" : {
+              "$ref" : "#/components/schemas/Pageable"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PagedModelGuardianSummaryResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Bad Request"
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Unauthorized"
+          },
+          "429" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Too Many Requests"
+          }
+        },
+        "tags" : [
+          "guardian-controller"
+        ]
+      }
+    },
+    "/api/v1/guardians/{id}" : {
+      "get" : {
+        "operationId" : "findById_1",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "id",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/GuardianResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Bad Request"
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Unauthorized"
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Not Found"
+          },
+          "429" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Too Many Requests"
+          }
+        },
+        "tags" : [
+          "guardian-controller"
+        ]
+      },
+      "put" : {
+        "operationId" : "update_1",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "id",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/GuardianRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/GuardianResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Bad Request"
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Unauthorized"
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Not Found"
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Conflict"
+          },
+          "429" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Too Many Requests"
+          }
+        },
+        "tags" : [
+          "guardian-controller"
         ]
       }
     },

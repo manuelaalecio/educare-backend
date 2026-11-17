@@ -1,19 +1,25 @@
 package com.manuelaalecio.educare_backend.child.api.dto;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 
+import com.manuelaalecio.educare_backend.child.api.OneGuardianSource;
+import com.manuelaalecio.educare_backend.child.api.UniqueGuardianIds;
 import com.manuelaalecio.educare_backend.child.api.ValidBirthRegistrationNumber;
-import com.manuelaalecio.educare_backend.child.api.ValidCpf;
+import com.manuelaalecio.educare_backend.shared.validation.ValidCpf;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 /**
  * Body of {@code POST /api/v1/children} and {@code PUT /api/v1/children/{id}}: the update replaces the whole child,
- * so both accept the same fields and rules, including the class (required: every child is in one class). The
+ * so both accept the same fields and rules, including the class (required: every child is in one class) and the 1 to
+ * 5 guardians (the update replaces the links of the child with the ones received). The
  * compact constructor strips every text and turns blank texts into {@code null} before Bean Validation runs, so
  * "required" and the maximum lengths are checked on the value that will be stored; it also upper-cases the state.
  */
@@ -97,7 +103,12 @@ public record ChildRequest(
 		String birthCertificateNumber,
 
 		@NotNull(message = "é obrigatória")
-		UUID classroomId) {
+		UUID classroomId,
+
+		@NotEmpty(message = "Informe pelo menos um responsável.")
+		@Size(max = 5, message = "Informe no máximo 5 responsáveis.")
+		@UniqueGuardianIds
+		List<@NotNull(message = "é obrigatório") @OneGuardianSource @Valid ChildGuardianRequest> guardians) {
 
 	public ChildRequest {
 		name = clean(name);

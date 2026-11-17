@@ -3,6 +3,8 @@ package com.manuelaalecio.educare_backend.child.domain;
 import java.time.LocalDate;
 
 import com.manuelaalecio.educare_backend.shared.persistence.BaseEntity;
+import com.manuelaalecio.educare_backend.shared.validation.Cpf;
+import com.manuelaalecio.educare_backend.shared.validation.Rg;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;

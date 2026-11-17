@@ -74,6 +74,8 @@ class ClassroomScenarioTest {
 
 	@BeforeEach
 	void setUp() throws Exception {
+		jdbcTemplate.update("DELETE FROM child_guardians");
+		jdbcTemplate.update("DELETE FROM guardians");
 		jdbcTemplate.update("DELETE FROM children");
 		jdbcTemplate.update("DELETE FROM classrooms");
 		jdbcTemplate.update("DELETE FROM users");
@@ -709,7 +711,8 @@ class ClassroomScenarioTest {
 		return """
 				{"name": "%s", "birthDate": "2018-05-10", "cep": "01310-100", "address": "Avenida Paulista",
 				 "neighborhood": "Bela Vista", "addressNumber": "1000", "city": "São Paulo", "state": "SP",
-				 "gender": %s, "classroomId": "%s"}""".formatted(name, gender == null ? "null" : "\"" + gender + "\"",
+				 "gender": %s, "classroomId": "%s",
+				 "guardians": [{"guardian": {"name": "Maria Souza", "phone": "11912345678", "notWorking": true}, "relationship": "MOTHER"}]}""".formatted(name, gender == null ? "null" : "\"" + gender + "\"",
 				classroomId);
 	}
 

@@ -41,7 +41,8 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 /**
  * Registry of the children served by the institution. Every authenticated user creates, reads, lists and updates
- * children (the token is required by the filter chain); only {@code COORDENADOR} deletes.
+ * children (the token is required by the filter chain); only {@code COORDENADOR} deletes. The guardians of the child
+ * are linked (and new ones created) in the body of the creation and of the update.
  */
 @RestController
 @RequestMapping(ChildController.BASE_PATH)
@@ -61,8 +62,8 @@ public class ChildController {
 	@BadRequestResponse
 	@ConflictResponse
 	public ResponseEntity<ChildResponse> create(@Valid @RequestBody ChildRequest request) {
-		ChildResponse created = childMapper
-			.toResponse(childService.create(childMapper.toDetails(request), request.classroomId()));
+		ChildResponse created = childMapper.toResponse(childService.create(childMapper.toDetails(request),
+				request.classroomId(), childMapper.toGuardianCommands(request)));
 		URI location = UriComponentsBuilder.fromPath(BASE_PATH).path("/{id}").buildAndExpand(created.id()).toUri();
 		return ResponseEntity.created(location).body(created);
 	}
@@ -112,7 +113,8 @@ public class ChildController {
 	@NotFoundResponse
 	@ConflictResponse
 	public ChildResponse update(@PathVariable UUID id, @Valid @RequestBody ChildRequest request) {
-		return childMapper.toResponse(childService.update(id, childMapper.toDetails(request), request.classroomId()));
+		return childMapper.toResponse(childService.update(id, childMapper.toDetails(request), request.classroomId(),
+				childMapper.toGuardianCommands(request)));
 	}
 
 	@DeleteMapping("/{id}")
